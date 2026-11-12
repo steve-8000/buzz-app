@@ -9,6 +9,10 @@ export type Config = Readonly<{
   base: string;
   /** Where the agent works when no repository is set. */
   workspace: string;
+  /** Folders of git repositories, or repositories themselves. When set, each
+   * conversation picks its repository from them: the one named like its
+   * channel, or `repo:<name>` in the owner's first message. */
+  roots: readonly string[];
   /** `provider/model`; empty keeps omp's own choice. */
   model: string;
   /** omp's thinking level; empty keeps omp's own choice. */
@@ -25,6 +29,7 @@ export const DEFAULT_CONFIG: Config = {
   repo: "",
   base: "main",
   workspace: "~/.buzz/omp",
+  roots: [],
   model: "",
   thinking: "",
   instructions: "",
@@ -52,6 +57,17 @@ const whole = (value: unknown, fallback: number, min: number, max: number) =>
     ? Math.min(max, Math.max(min, Math.trunc(value)))
     : fallback;
 
+const folders = (value: unknown): string[] =>
+  (Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\n,]/)
+      : []
+  )
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 /** A saved config as it is read back: unknown fields and bad values fall back
  * to the defaults, so an edited or older record never breaks a turn. */
 export function config(value: unknown): Config {
@@ -66,6 +82,7 @@ export function config(value: unknown): Config {
     workspace:
       text(saved.workspace, DEFAULT_CONFIG.workspace).trim() ||
       DEFAULT_CONFIG.workspace,
+    roots: folders(saved.roots),
     model: text(saved.model, "").trim(),
     thinking: (THINKING_LEVELS as readonly string[]).includes(thinking)
       ? thinking

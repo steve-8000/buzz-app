@@ -59,6 +59,17 @@ export function OmpSettings({ agent, save }: AgentViewProps<Config>) {
   return (
     <SettingsGroup>
       <Field
+        label="Repository folders"
+        description="One per line: folders holding git repositories, or repositories themselves. A conversation works in the repository named like its channel, or named in its first message as repo:<name>. Otherwise it uses the repository below."
+        optional
+      >
+        <Textarea
+          value={draft.roots.join("\n")}
+          placeholder={"~/4pillars\n~/thegram"}
+          onChange={(event) => set("roots", event.target.value.split("\n"))}
+        />
+      </Field>
+      <Field
         label="Repository"
         description="Each conversation works in its own git worktree of this repository. Leave empty to work in the folder below."
       >

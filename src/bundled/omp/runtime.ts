@@ -12,6 +12,14 @@ import type { Host, HostProcess } from "../../features/host/service";
 import { Admission } from "./admission";
 import { type Config, config } from "./config";
 import {
+  type Choice,
+  describeRepositories,
+  LIST_SCRIPT,
+  parseRepositories,
+  pickRepository,
+  type Repo,
+} from "./repos";
+import {
   answerTo,
   type Frame,
   isRecord,
@@ -45,6 +53,10 @@ type Session = {
   starting?: Promise<OmpRpc> | undefined;
   cwd: string;
   branch?: string | undefined;
+  /** Where the conversation works: its repository, "" for none, undefined
+   * until chosen. */
+  repo?: string | undefined;
+  repos?: readonly Repo[] | undefined;
   cursor?: string | undefined;
   busy: boolean;
   /** omp's session has no messages yet, so the first prompt carries Buzz's
@@ -203,18 +215,22 @@ export class OmpRuntime {
 
   private async turn(session: Session, delivery: Delivery<Config>) {
     const cfg = session.config;
-    const release = await this.admission.acquire(
-      cfg.repo || cfg.workspace,
-      cfg.maxConcurrent,
-      session.stopped.signal,
-    );
+    let release: (() => void) | undefined;
     try {
+      const repo = await this.locate(session, cfg);
+      release = await this.admission.acquire(
+        repo || cfg.workspace,
+        cfg.maxConcurrent,
+        session.stopped.signal,
+      );
       const rpc = await this.ensure(session, cfg);
       const system = session.fresh
         ? await this.harness.systemPrompt(delivery, {
             scope: cfg.scope,
             cwd: session.cwd,
-            instructions: cfg.instructions,
+            instructions: [cfg.instructions, this.note(session)]
+              .filter(Boolean)
+              .join("\n\n"),
             tools: false,
           })
         : "";
@@ -248,12 +264,93 @@ export class OmpRuntime {
       await this.say(session, `⚠️ ${errorText(error)}`, true);
       throw error;
     } finally {
-      release();
+      release?.();
       session.busy = false;
       session.delivery = undefined;
       if (!session.pending && this.sessions.get(session.id) === session)
         session.idle = setTimeout(() => void this.close(session), IDLE_MS);
     }
+  }
+
+  /** The repository this conversation works in: named in the owner's first
+   * message, or like its channel, from the agent's folders; else the agent's
+   * own repository. Chosen once, so a conversation keeps its worktree. */
+  private async locate(session: Session, cfg: Config): Promise<string> {
+    if (session.repo === undefined) {
+      session.repo = "";
+      if (cfg.roots.length) {
+        const repos = await this.repositories(cfg.roots);
+        session.repos = repos;
+        const prior = await this.prior(session);
+        const known = prior
+          ? repos.find((item) => item.name === prior)
+          : undefined;
+        const words = session.delivery ? wordsOf(session.delivery) : "";
+        const choice: Choice = known
+          ? { repo: known }
+          : pickRepository(repos, session.conversation.where, words);
+        const { repo, asked, candidates } = choice;
+        if (candidates) {
+          session.repo = undefined;
+          throw new Error(
+            `Which repository? Add \`repo:<name>\` to your message. ${session.conversation.where} has: ${candidates
+              .slice(0, 40)
+              .map((item) => item.name)
+              .join(", ")}`,
+          );
+        }
+        if (asked && !repo) {
+          session.repo = undefined;
+          throw new Error(
+            `No repository named \`${asked}\` in ${cfg.roots.join(", ")}.`,
+          );
+        }
+        session.repo = repo?.path ?? "";
+      }
+    }
+    return session.repo || cfg.repo;
+  }
+
+  private async shell(script: string, args: readonly string[]) {
+    if (!this.host.spawn) throw new Error("This build cannot start processes.");
+    let out = "";
+    const proc = await this.host.spawn("sh", {
+      args: [script, "buzz", ...args],
+      cwd: DATA_ROOT,
+      onStdout: (data) => {
+        out += data;
+      },
+    });
+    await proc.exited;
+    return out;
+  }
+
+  private async repositories(roots: readonly string[]): Promise<Repo[]> {
+    return parseRepositories(await this.shell(LIST_SCRIPT, roots));
+  }
+
+  /** The repository whose worktree this conversation already has, so a
+   * restart or a later message cannot move it to another repository. */
+  private async prior(session: Session): Promise<string | undefined> {
+    const out = await this.shell(
+      'ls -d "$HOME"/.buzz/omp/worktrees/*/"$1" 2>/dev/null',
+      [slug(session.id)],
+    );
+    return out
+      .split("\n")
+      .map((line) => line.trim().split("/").slice(-2)[0])
+      .find(Boolean);
+  }
+
+  /** Where the owner's own checkouts are, for a session that works in a worktree. */
+  private note(session: Session) {
+    if (!session.repos?.length) return "";
+    return [
+      `Your working directory is an isolated git worktree${session.branch ? ` (branch ${session.branch})` : ""} of ${session.repo || "no repository"}; edit only there.`,
+      "The owner's own checkouts on this computer are for reading by absolute path, never for editing. Repositories by folder:",
+      describeRepositories(session.repos),
+      "To work on another repository the owner starts a new thread with `repo:<name>`.",
+    ].join("\n");
   }
 
   private async directory(path: string) {
@@ -293,11 +390,12 @@ export class OmpRuntime {
     this.root ??= this.directory(DATA_ROOT);
     const root = await this.root;
     let cwd: string;
-    if (cfg.repo) {
+    const picked = session.repo || cfg.repo;
+    if (picked) {
       const worktree = await prepareWorktree(
         (args, dir) => this.git(args, dir),
         {
-          repo: await this.directory(cfg.repo),
+          repo: await this.directory(picked),
           base: cfg.base,
           root: `${root}/worktrees`,
           key: session.id,

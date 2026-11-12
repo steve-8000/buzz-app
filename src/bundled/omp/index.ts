@@ -30,10 +30,9 @@ export const apply: PluginModule["apply"] = (ctx) => {
       "Oh My Pi on this computer. Each conversation works in its own git worktree, and omp's approvals are asked in the conversation.",
     defaults: () => ({ config: DEFAULT_CONFIG }),
     summary: (agent) => {
-      const { model, repo } = config(agent.config);
-      return (
-        [repo.split("/").pop(), model].filter(Boolean).join(" · ") || "omp"
-      );
+      const { model, repo, roots } = config(agent.config);
+      const where = repo.split("/").pop() || (roots.length ? "any repo" : "");
+      return [where, model].filter(Boolean).join(" · ") || "omp";
     },
     tabs: [
       {
