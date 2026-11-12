@@ -30,9 +30,9 @@ export function parseRepositories(output: string): Repo[] {
 export type Choice = Readonly<{
   repo?: Repo;
   asked?: string;
-  /** The channel names a folder of repositories rather than one: the owner
-   * has to pick from these. */
-  candidates?: readonly Repo[];
+  /** The channel names a folder of repositories and the message names no
+   * single one: the conversation works in that folder, across them. */
+  hub?: string;
 }>;
 
 const parentName = (repo: Repo) =>
@@ -75,17 +75,18 @@ export function pickRepository(
     })
     .sort((a, b) => b.name.length - a.name.length)[0];
   if (longest) return { repo: longest };
-  // A channel named for a folder of repositories (an organisation): the
-  // message says which one, or the owner is asked.
+  // A channel named for a folder of repositories (an organisation): a message
+  // naming one of them picks it, any other question works across the folder.
   const group = repos.filter((item) => {
     const folder = parentName(item);
     return folder === channel || folder.startsWith(`${channel}-`);
   });
-  if (!group.length) return {};
+  const first = group[0];
+  if (!first) return {};
   const mentioned = group.filter((item) => named(words, item.name));
   const only = mentioned[0];
   if (mentioned.length === 1 && only) return { repo: only };
-  return { candidates: mentioned.length ? mentioned : group };
+  return { hub: first.path.slice(0, first.path.lastIndexOf("/")) };
 }
 
 const NAMES_LIMIT = 120;

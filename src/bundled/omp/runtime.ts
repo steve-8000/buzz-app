@@ -57,6 +57,9 @@ type Session = {
    * until chosen. */
   repo?: string | undefined;
   repos?: readonly Repo[] | undefined;
+  /** A folder of repositories the conversation works in across, when its
+   * channel names the folder and the message names no single repository. */
+  hub?: string | undefined;
   cursor?: string | undefined;
   busy: boolean;
   /** omp's session has no messages yet, so the first prompt carries Buzz's
@@ -285,20 +288,14 @@ export class OmpRuntime {
         const known = prior
           ? repos.find((item) => item.name === prior)
           : undefined;
+        const kept = known ? "" : await this.hubOf(session);
         const words = session.delivery ? wordsOf(session.delivery) : "";
         const choice: Choice = known
           ? { repo: known }
-          : pickRepository(repos, session.conversation.where, words);
-        const { repo, asked, candidates } = choice;
-        if (candidates) {
-          session.repo = undefined;
-          throw new Error(
-            `Which repository? Add \`repo:<name>\` to your message. ${session.conversation.where} has: ${candidates
-              .slice(0, 40)
-              .map((item) => item.name)
-              .join(", ")}`,
-          );
-        }
+          : kept
+            ? { hub: kept }
+            : pickRepository(repos, session.conversation.where, words);
+        const { repo, asked, hub } = choice;
         if (asked && !repo) {
           session.repo = undefined;
           throw new Error(
@@ -306,9 +303,13 @@ export class OmpRuntime {
           );
         }
         session.repo = repo?.path ?? "";
+        if (hub) {
+          session.hub = hub;
+          if (!kept) await this.markHub(session, hub);
+        }
       }
     }
-    return session.repo || cfg.repo;
+    return session.repo || session.hub || cfg.repo;
   }
 
   private async shell(script: string, args: readonly string[]) {
@@ -342,9 +343,32 @@ export class OmpRuntime {
       .find(Boolean);
   }
 
-  /** Where the owner's own checkouts are, for a session that works in a worktree. */
+  /** The folder this conversation works across, kept like its worktree. */
+  private async hubOf(session: Session): Promise<string> {
+    const out = await this.shell(
+      'cat "$HOME"/.buzz/omp/hubs/"$1" 2>/dev/null',
+      [slug(session.id)],
+    );
+    return out.trim();
+  }
+
+  private async markHub(session: Session, hub: string) {
+    await this.shell(
+      'mkdir -p "$HOME"/.buzz/omp/hubs && printf %s "$2" > "$HOME"/.buzz/omp/hubs/"$1"',
+      [slug(session.id), hub],
+    );
+  }
+
+  /** Where the owner's own checkouts are, for a session in a worktree or in a folder of repositories. */
   private note(session: Session) {
     if (!session.repos?.length) return "";
+    if (session.hub)
+      return [
+        `Your working directory is ${session.hub}, the owner's folder of repositories, not one repository: look at whichever ones the question concerns.`,
+        "These are the owner's own working copies. Read and inspect them and run read-only commands, but do not edit files here. When a change is needed, say what to change and in which repository: the owner starts a new thread with `repo:<name>` and it is done in an isolated worktree.",
+        "Repositories by folder:",
+        describeRepositories(session.repos),
+      ].join("\n");
     return [
       `Your working directory is an isolated git worktree${session.branch ? ` (branch ${session.branch})` : ""} of ${session.repo || "no repository"}; edit only there.`,
       "The owner's own checkouts on this computer are for reading by absolute path, never for editing. Repositories by folder:",
@@ -390,7 +414,7 @@ export class OmpRuntime {
     this.root ??= this.directory(DATA_ROOT);
     const root = await this.root;
     let cwd: string;
-    const picked = session.repo || cfg.repo;
+    const picked = session.hub ? "" : session.repo || cfg.repo;
     if (picked) {
       const worktree = await prepareWorktree(
         (args, dir) => this.git(args, dir),
@@ -404,7 +428,7 @@ export class OmpRuntime {
       cwd = worktree.path;
       session.branch = worktree.branch;
     } else {
-      cwd = await this.directory(cfg.workspace);
+      cwd = await this.directory(session.hub || cfg.workspace);
     }
     session.cwd = cwd;
 
