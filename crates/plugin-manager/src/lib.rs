@@ -542,6 +542,8 @@ pub fn bundled_manifests() -> Vec<Manifest> {
             "../../../src/bundled/changesets/manifest.json"
         ))
         .expect("changesets manifest"),
+        serde_json::from_str(include_str!("../../../src/bundled/omp/manifest.json"))
+            .expect("omp manifest"),
     ]
 }
 /// New bundles must opt in to the default-on policy.
@@ -570,6 +572,7 @@ fn enabled_by_default(id: &str) -> bool {
             | "buzz.claude-code"
             | "buzz.codex"
             | "buzz.goose"
+            | "buzz.omp"
             | "block.builderlab"
             | "buzz.moderation"
             | "buzz.relay-staff"
