@@ -42,6 +42,8 @@ import gooseManifest from "./goose/manifest.json";
 import * as goose from "./goose";
 import piManifest from "./pi/manifest.json";
 import * as pi from "./pi";
+import ompManifest from "./omp/manifest.json";
+import * as omp from "./omp";
 import channelsManifest from "./channels/manifest.json";
 import githubManifest from "./github/manifest.json";
 import * as channels from "./channels";
@@ -247,6 +249,11 @@ export const bundledPlugins: readonly BundledPlugin[] = [
     manifest: { ...piManifest, apiVersion: 1 },
     module: pi,
     enabledByDefault: false,
+  },
+  {
+    manifest: { ...ompManifest, apiVersion: 1 },
+    module: omp,
+    enabledByDefault: true,
   },
   {
     manifest: { ...changesetsManifest, apiVersion: 1 },

@@ -1,0 +1,30 @@
+{
+  "id": "buzz.omp",
+  "name": "Oh My Pi",
+  "apiVersion": 1,
+  "description": "Run Oh My Pi coding agents in Buzz: one git worktree and one omp session per thread.",
+  "discovery": {
+    "category": "agents",
+    "tags": ["code", "coding-agents"]
+  },
+  "host": {
+    "processes": [
+      {
+        "id": "omp",
+        "program": "omp",
+        "args": ["--mode", "rpc-ui"]
+      },
+      {
+        "id": "git",
+        "program": "git",
+        "args": []
+      },
+      {
+        "id": "sh",
+        "program": "bash",
+        "args": ["-c"]
+      }
+    ],
+    "files": true
+  }
+}
