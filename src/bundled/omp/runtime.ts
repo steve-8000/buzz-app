@@ -11,6 +11,7 @@ import type { AgentHandle, Delivery } from "../../features/agents/service";
 import type { Host, HostProcess } from "../../features/host/service";
 import { Admission } from "./admission";
 import { type Config, config } from "./config";
+import { intro, slim } from "./prompt";
 import {
   type Choice,
   describeRepositories,
@@ -157,6 +158,7 @@ export class OmpRuntime {
       this.sessions.set(id, session);
     }
     session.config = cfg;
+    session.conversation = conversation;
     clearTimeout(session.idle);
 
     if (session.pending) {
@@ -177,7 +179,7 @@ export class OmpRuntime {
         session.cursor ? { cursor: session.cursor } : undefined,
       );
       try {
-        await session.rpc.steer(prompt.text);
+        await session.rpc.steer(slim(prompt.text));
         session.cursor = prompt.cursor;
       } catch (error) {
         prompt.restore();
@@ -228,14 +230,7 @@ export class OmpRuntime {
       );
       const rpc = await this.ensure(session, cfg);
       const system = session.fresh
-        ? await this.harness.systemPrompt(delivery, {
-            scope: cfg.scope,
-            cwd: session.cwd,
-            instructions: [cfg.instructions, this.note(session)]
-              .filter(Boolean)
-              .join("\n\n"),
-            tools: false,
-          })
+        ? intro(delivery.agent.name, [cfg.instructions, this.note(session)])
         : "";
       const prompt = await this.harness.turnPrompt(
         delivery,
@@ -245,7 +240,8 @@ export class OmpRuntime {
       const end = rpc.nextEnd();
       end.catch(() => undefined);
       try {
-        await rpc.prompt(system ? `${system}\n\n${prompt.text}` : prompt.text);
+        const text = slim(prompt.text);
+        await rpc.prompt(system ? `${system}\n\n${text}` : text);
       } catch (error) {
         prompt.restore();
         throw error;
@@ -359,21 +355,17 @@ export class OmpRuntime {
     );
   }
 
-  /** Where the owner's own checkouts are, for a session in a worktree or in a folder of repositories. */
+  /** Where the conversation works and what exists, as facts. */
   private note(session: Session) {
     if (!session.repos?.length) return "";
-    if (session.hub)
-      return [
-        `Your working directory is ${session.hub}, the owner's folder of repositories, not one repository: look at whichever ones the question concerns.`,
-        "These are the owner's own working copies. Read and inspect them and run read-only commands, but do not edit files here. When a change is needed, say what to change and in which repository: the owner starts a new thread with `repo:<name>` and it is done in an isolated worktree.",
-        "Repositories by folder:",
-        describeRepositories(session.repos),
-      ].join("\n");
+    const where = session.hub
+      ? `Your working directory is ${session.hub}, the owner's folder of repositories. They are the owner's own checkouts and can hold uncommitted work.`
+      : `Your working directory is a git worktree of ${session.repo || "no repository"}${session.branch ? ` on branch ${session.branch}` : ""}, made for this conversation. The owner's own checkouts are elsewhere and can hold uncommitted work.`;
     return [
-      `Your working directory is an isolated git worktree${session.branch ? ` (branch ${session.branch})` : ""} of ${session.repo || "no repository"}; edit only there.`,
-      "The owner's own checkouts on this computer are for reading by absolute path, never for editing. Repositories by folder:",
+      where,
+      "Repositories by folder:",
       describeRepositories(session.repos),
-      "To work on another repository the owner starts a new thread with `repo:<name>`.",
+      "A thread started with `repo:<name>` works in its own worktree of that repository.",
     ].join("\n");
   }
 

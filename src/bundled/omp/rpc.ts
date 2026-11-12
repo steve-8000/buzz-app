@@ -78,6 +78,9 @@ export class OmpRpc {
     resolve(end: RunEnd): void;
     reject(error: Error): void;
   }> = [];
+  /** The last assistant message omp finished, kept because a long run's
+   * `agent_end` is cut to fit the 1 MiB frame limit and may carry none. */
+  private streamed: RunEnd | undefined;
   private readonly readied: Promise<void>;
   private ready!: () => void;
 
@@ -198,9 +201,21 @@ export class OmpRpc {
       case "extension_ui_request":
         this.question(frame);
         return;
+      case "message_end":
+        this.streamed = assistantEnd(frame.message) ?? this.streamed;
+        this.hooks.event?.(frame);
+        return;
       case "agent_end": {
-        const end = runEnd(frame);
-        for (const waiter of this.ends.splice(0)) waiter.resolve(end);
+        // A retry or a reminder goes on by itself: the run has not finished.
+        const yielded =
+          typeof frame.yielded === "boolean"
+            ? frame.yielded
+            : frame.isTerminal !== false;
+        if (yielded) {
+          const end = this.streamed ?? runEnd(frame);
+          this.streamed = undefined;
+          for (const waiter of this.ends.splice(0)) waiter.resolve(end);
+        }
         this.hooks.event?.(frame);
         return;
       }
@@ -255,30 +270,34 @@ export class OmpRpc {
   }
 }
 
+function assistantEnd(message: unknown): RunEnd | undefined {
+  if (!isRecord(message) || message.role !== "assistant") return undefined;
+  const parts = Array.isArray(message.content) ? message.content : [];
+  const text = parts
+    .map((part: unknown) =>
+      isRecord(part) && part.type === "text" && typeof part.text === "string"
+        ? part.text
+        : "",
+    )
+    .join("")
+    .trim();
+  if (message.stopReason === "error")
+    return {
+      text,
+      error:
+        typeof message.errorMessage === "string"
+          ? message.errorMessage
+          : "The run failed.",
+    };
+  return { text };
+}
+
 /** The last assistant text of a finished run, or its failure. */
 export function runEnd(frame: Frame): RunEnd {
   const messages = Array.isArray(frame.messages) ? frame.messages : [];
   for (let at = messages.length - 1; at >= 0; at--) {
-    const message: unknown = messages[at];
-    if (!isRecord(message) || message.role !== "assistant") continue;
-    const parts = Array.isArray(message.content) ? message.content : [];
-    const text = parts
-      .map((part: unknown) =>
-        isRecord(part) && part.type === "text" && typeof part.text === "string"
-          ? part.text
-          : "",
-      )
-      .join("")
-      .trim();
-    if (message.stopReason === "error")
-      return {
-        text,
-        error:
-          typeof message.errorMessage === "string"
-            ? message.errorMessage
-            : "The run failed.",
-      };
-    return { text };
+    const end = assistantEnd(messages[at]);
+    if (end) return end;
   }
   return { text: "" };
 }
