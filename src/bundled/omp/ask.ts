@@ -1,7 +1,7 @@
 // A question omp asks, as the chat message that carries it, and its reading
 // back. The buttons under a posted question are built from its text, so every
 // question stays answerable by typing, in any client.
-import type { UiRequest } from "./rpc";
+import type { UiAnswer, UiRequest } from "./rpc";
 
 const HINT = {
   confirm: "Reply `approve` or `deny` (mention me).",
@@ -25,6 +25,28 @@ export function formatQuestion(request: UiRequest, minutes: number) {
   else lines.push("", HINT.text);
   lines.push(`Refused automatically after ${minutes} minutes.`);
   return lines.join("\n");
+}
+
+/** The same question once settled: no hint, no expiry, so it reads back as
+ * no question and carries no buttons. */
+export function formatAnswered(request: UiRequest, label: string) {
+  const lines = [`🔐 **${request.title || "omp asks"}**`];
+  if (request.message) lines.push("", request.message);
+  if (request.method === "select")
+    lines.push(
+      "",
+      ...(request.options ?? []).map((option, at) => `${at + 1}. ${option}`),
+    );
+  lines.push("", `**${label}**`);
+  return lines.join("\n");
+}
+
+/** How an answer reads in the settled question. */
+export function answerLabel(answer: UiAnswer) {
+  if ("confirmed" in answer)
+    return answer.confirmed ? "✅ Approved" : "⛔ Denied";
+  if ("value" in answer) return `✅ ${answer.value}`;
+  return "⛔ Denied";
 }
 
 /** What to say when a reply to a pending question was not an answer to it. */

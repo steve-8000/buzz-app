@@ -52,5 +52,7 @@ export const apply: PluginModule["apply"] = (ctx) => {
     retire: (key) => runtime.retire(key),
     run: (delivery) => runtime.run(delivery),
     timeoutMs: HANDOVER_MS,
+    // A reload ends omp's process, so Buzz asks the owner to resume its turns.
+    resumes: true,
   });
 };

@@ -14,7 +14,7 @@ import type {
 import type { AgentHandle, Delivery } from "../../features/agents/service";
 import type { Host, HostProcess } from "../../features/host/service";
 import { Admission } from "./admission";
-import { formatQuestion, retryHint } from "./ask";
+import { answerLabel, formatAnswered, formatQuestion, retryHint } from "./ask";
 import { type Config, config } from "./config";
 import { diagramsOf, extension, type Shot, shotsOf } from "./media";
 import { intro, slim } from "./prompt";
@@ -52,8 +52,10 @@ const SHOT_WINDOW_MS = 60_000;
 
 type Pending = {
   request: UiRequest;
-  settle(answer: UiAnswer): void;
+  settle(answer: UiAnswer, label?: string): void;
   timer: ReturnType<typeof setTimeout>;
+  /** The question's message id, once it is posted. */
+  posted?: Promise<string | undefined>;
 };
 
 /** What a run showed that is waiting to be posted. */
@@ -497,6 +499,7 @@ export class OmpRuntime {
             session.pending.request.method === "confirm"
               ? { confirmed: false }
               : { cancelled: true },
+            "↩ omp withdrew the question",
           );
       },
       event: (frame) => {
@@ -512,7 +515,7 @@ export class OmpRuntime {
           session.rpc = undefined;
           session.proc = undefined;
         }
-        session.pending?.settle({ cancelled: true });
+        session.pending?.settle({ cancelled: true }, "⏹ omp stopped");
       },
       started: () => {
         if (!session.busy) void this.continued(session);
@@ -548,18 +551,23 @@ export class OmpRuntime {
           const minutes = session.config.approvalMinutes;
           const pending: Pending = {
             request,
-            settle: (answer) => {
+            settle: (answer, label = answerLabel(answer)) => {
               clearTimeout(pending.timer);
-              if (session.pending === pending) session.pending = undefined;
+              const current = session.pending === pending;
+              if (current) session.pending = undefined;
               resolve(answer);
+              if (current) void this.answered(session, pending, label);
             },
             timer: setTimeout(() => {
-              pending.settle(refused);
-              void this.say(session, "⏱ No answer in time; refused.");
+              pending.settle(refused, "⏱ No answer in time, refused");
             }, minutes * 60_000),
           };
           session.pending = pending;
-          void this.say(session, formatQuestion(request, minutes), true);
+          pending.posted = this.say(
+            session,
+            formatQuestion(request, minutes),
+            true,
+          );
         }),
     );
     session.asking = next.catch(() => undefined);
@@ -642,9 +650,24 @@ export class OmpRuntime {
         .catch(() => undefined);
   }
 
+  /** Rewrites a settled question as what became of it, so the message holds
+   * no buttons wherever and whenever it is opened again. */
+  private async answered(session: Session, pending: Pending, label: string) {
+    const id = await pending.posted;
+    if (!id) return;
+    await this.harness
+      .revise(
+        session.agent,
+        session.conversation,
+        id,
+        clip(formatAnswered(pending.request, label)),
+      )
+      .catch(() => undefined);
+  }
+
   private async say(session: Session, text: string, notifyOwner = false) {
     await this.flushMedia(session);
-    await this.harness
+    return this.harness
       .reply(session.agent, session.conversation, clip(text), { notifyOwner })
       .catch(() => undefined);
   }
@@ -652,7 +675,7 @@ export class OmpRuntime {
   private async close(session: Session) {
     clearTimeout(session.idle);
     session.stopped.abort();
-    session.pending?.settle({ cancelled: true });
+    session.pending?.settle({ cancelled: true }, "⏹ Stopped");
     if (this.sessions.get(session.id) === session)
       this.sessions.delete(session.id);
     await session.rpc?.kill().catch(() => undefined);
