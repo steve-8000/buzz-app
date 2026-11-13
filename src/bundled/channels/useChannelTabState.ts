@@ -234,6 +234,20 @@ const visitOwners = new Map<string, { channels: Record<string, Retirement> }>();
 const forgetVisits = (scope: string) => {
   visitOwners.delete(scope);
 };
+const side = (state: State) =>
+  state.tabs.filter((tab) => tab.kind === "thread" && tabPane(tab) === "side");
+/** A tab as another workspace gets it: the intents it was opened with, such as
+ * focusing the reply box, belong to the workspace that acted on them. */
+const withoutRequests = (tab: ConversationTab): ConversationTab =>
+  tab.kind === "thread"
+    ? {
+        ...tab,
+        replyRequest: undefined,
+        focusRequest: undefined,
+        revealRequest: undefined,
+        attentionRequest: undefined,
+      }
+    : tab;
 function createTabStore(scope?: string) {
   const owner = { channels: (scope && visitOwners.get(scope)?.channels) || {} };
   let channels: Record<string, State> = Object.fromEntries(
@@ -248,7 +262,23 @@ function createTabStore(scope?: string) {
   }
   const listeners = new Set<() => void>();
   const mounts = new Map<string, number>();
+  // One workspace: the side pane's thread tabs, the one selected and whether
+  // the pane is open are the same on every page and in every channel.
+  let shared = {
+    tabs: [] as ConversationTab[],
+    selected: empty.selected,
+    paneOpen: empty.paneOpen,
+  };
+  let seed: State | undefined;
+  const seeded = (): State =>
+    (seed ??= {
+      ...empty,
+      tabs: shared.tabs,
+      selected: shared.selected,
+      paneOpen: shared.paneOpen,
+    });
   return {
+    seed: seeded,
     visible: (key: string) => mounts.has(key),
     mount(key: string) {
       mounts.set(key, (mounts.get(key) ?? 0) + 1);
@@ -297,10 +327,79 @@ function createTabStore(scope?: string) {
     },
     /** Changes one page's channel workspace. */
     update(key: string, change: (previous: State) => State) {
-      const previous = channels[key] ?? empty;
+      const previous = channels[key] ?? seeded();
       const next = change(previous);
       if (next === previous) return;
-      channels = { ...channels, [key]: next };
+      const before = side(previous);
+      const after = side(next);
+      const sameTab = (a: ConversationTab, b: ConversationTab) => a.id === b.id;
+      const gone = new Set(
+        before
+          .filter((tab) => !after.some((kept) => sameTab(kept, tab)))
+          .map((tab) => tab.id),
+      );
+      const added = after
+        .filter((tab) => !before.some((had) => sameTab(had, tab)))
+        .map(withoutRequests);
+      const renamed = after.filter((tab) =>
+        before.some(
+          (had) =>
+            sameTab(had, tab) &&
+            tab.kind === "thread" &&
+            had.kind === "thread" &&
+            (had.name !== tab.name || had.rootId !== tab.rootId),
+        ),
+      );
+      const selected =
+        next.selected !== previous.selected &&
+        after.some((tab) => tab.id === next.selected)
+          ? next.selected
+          : undefined;
+      const paneOpen =
+        next.paneOpen !== previous.paneOpen ? next.paneOpen : undefined;
+      const workspace =
+        gone.size > 0 ||
+        added.length > 0 ||
+        renamed.length > 0 ||
+        selected !== undefined ||
+        paneOpen !== undefined;
+      const all: Record<string, State> = { ...channels, [key]: next };
+      if (workspace) {
+        shared = {
+          tabs: after.map(withoutRequests),
+          selected: selected ?? shared.selected,
+          paneOpen: paneOpen ?? shared.paneOpen,
+        };
+        seed = undefined;
+        for (const [other, state] of Object.entries(all)) {
+          if (other === key) continue;
+          const kept = state.tabs
+            .filter(
+              (tab) =>
+                !(
+                  tab.kind === "thread" &&
+                  tabPane(tab) === "side" &&
+                  gone.has(tab.id)
+                ),
+            )
+            .map((tab) => {
+              const change = renamed.find((item) => item.id === tab.id);
+              return change?.kind === "thread" &&
+                tab.kind === "thread" &&
+                tabPane(tab) === "side"
+                ? { ...tab, name: change.name, rootId: change.rootId }
+                : tab;
+            });
+          const have = new Set(kept.map((tab) => tab.id));
+          all[other] = {
+            ...state,
+            tabs: [...kept, ...added.filter((tab) => !have.has(tab.id))],
+            ...(selected === undefined ? {} : { selected }),
+            ...(paneOpen === undefined ? {} : { paneOpen }),
+          };
+        }
+      }
+      channels = all;
       // A stale session may still update its own store, but cannot overwrite
       // the successor's retirement metadata. Records are copy-on-write.
       if (scope && visitOwners.get(scope) === owner)
@@ -341,7 +440,7 @@ export const rootOfTab = (tab: Extract<ConversationTab, { kind: "thread" }>) =>
 export function channelTabs(session: RelaySession, navigation?: Navigation) {
   const store = storeOf(session);
   const stateOf = (channelId: string) =>
-    store.snapshot()[keyOf("messages", channelId)] ?? empty;
+    store.snapshot()[keyOf("messages", channelId)] ?? store.seed();
   const threads = (channelId: string) => {
     const state = stateOf(channelId);
     const visible = store.visible(keyOf("messages", channelId));
@@ -470,7 +569,7 @@ export function useChannelTabState(
   const key = keyOf(page, channelId ?? "");
   // Retain descriptors across navigation, but protect only a mounted workspace.
   useLayoutEffect(() => store.mount(key), [key, store]);
-  const state = channels[key] ?? empty;
+  const state = channels[key] ?? store.seed();
   const update = useCallback(
     (change: (previous: State) => State) => store.update(key, change),
     [key, store],
@@ -851,7 +950,7 @@ export function useChannelTabState(
   // visit that happened to keep its tab visible remains a real destination.
   const threadVisits = useCallback(
     (channelId: string, rootId: string) => {
-      const state = snapshot()[key] ?? empty;
+      const state = snapshot()[key] ?? store.seed();
       return Object.entries(state.routedVisits ?? {}).flatMap(
         ([visit, thread]) =>
           thread.channelId === channelId && thread.rootId === rootId
@@ -859,7 +958,7 @@ export function useChannelTabState(
             : [],
       );
     },
-    [key, snapshot],
+    [key, snapshot, store],
   );
   const detailVisits = useCallback(
     (channelId: string, target: string) => {
@@ -896,8 +995,8 @@ export function useChannelTabState(
   );
   // Selection reads stay synchronous and stable for navigation handoff effects.
   const getSelected = useCallback(
-    () => snapshot()[key]?.selected ?? empty.selected,
-    [key, snapshot],
+    () => snapshot()[key]?.selected ?? store.seed().selected,
+    [key, snapshot, store],
   );
   const getMainSelected = useCallback(
     () => snapshot()[key]?.mainSelected,

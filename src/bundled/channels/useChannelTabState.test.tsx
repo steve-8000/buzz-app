@@ -66,7 +66,7 @@ test("selection readers stay stable during local updates and change with the cha
   expect(h.result.current.getMainSelected()).toBeUndefined();
 });
 
-test("page remount restores each channel's tabs, selection and closed pane", () => {
+test("page remount restores each channel's tabs and selection; the pane's open state is shared", () => {
   const session = {} as RelaySession;
   const mounted = renderHook(
     ({ channel }) => useChannelTabState(session, channel),
@@ -93,7 +93,7 @@ test("page remount restores each channel's tabs, selection and closed pane", () 
   );
   expect(restored.result.current).toMatchObject({
     selected: "beta-tab",
-    paneOpen: false,
+    paneOpen: true,
     tabs: [{ id: "beta-tab", kind: "conversation", channelId: "beta" }],
   });
   restored.rerender({ channel: "beta" });
@@ -175,7 +175,7 @@ test("channel switches keep each channel's menu opening and selection", () => {
   expect(mounted.result.current.selected).toBe(panelTabId(betaTool));
 });
 
-test("Solo and Messages retain independent workspaces for the same conversation", () => {
+test("Solo and Messages share the side pane's thread tabs and whether it is open", () => {
   const session = {} as RelaySession;
   const messages = renderHook(() => useChannelTabState(session, "alpha"));
   const solo = renderHook(() => useChannelTabState(session, "alpha", "solo"));
@@ -189,31 +189,21 @@ test("Solo and Messages retain independent workspaces for the same conversation"
       },
     ]);
     messages.result.current.select("messages-tab");
-    solo.result.current.setTabs(() => [
-      { id: "solo-tab", kind: "conversation", channelId: "beta" },
-    ]);
-    solo.result.current.select("solo-tab");
     solo.result.current.setPaneOpen(false);
   });
-  expect(messages.result.current).toMatchObject({
-    selected: "messages-tab",
-    paneOpen: true,
-    tabs: [{ id: "messages-tab" }],
-  });
-  solo.unmount();
-  const restored = renderHook(() =>
-    useChannelTabState(session, "alpha", "solo"),
-  );
-  expect(restored.result.current).toMatchObject({
-    selected: "solo-tab",
-    paneOpen: false,
-    tabs: [{ id: "solo-tab" }],
-  });
+  for (const page of [messages, solo])
+    expect(page.result.current).toMatchObject({
+      selected: "messages-tab",
+      paneOpen: false,
+      tabs: [{ id: "messages-tab" }],
+    });
+  act(() => solo.result.current.setTabs(() => []));
+  expect(messages.result.current.tabs).toEqual([]);
 });
 
 // Exercise the channel-owned open action through a mounted hook. This verifies
 // the resulting user state, not React batching or notification counts.
-test("opening a thread selects it, deduplicates its root and restores each channel", () => {
+test("opening a thread selects it, deduplicates its root and shows it in every channel", () => {
   const session = {} as RelaySession;
   const workspace = renderHook(
     ({ channel }) => useChannelTabState(session, channel),
@@ -266,7 +256,7 @@ test("opening a thread selects it, deduplicates its root and restores each chann
   ]);
   expect(workspace.result.current.selected).toBe("thread:alpha:root-a");
   workspace.rerender({ channel: "beta" });
-  expect(workspace.result.current.tabs).toEqual([]);
+  expect(workspace.result.current.tabs).toHaveLength(2);
   workspace.rerender({ channel: "alpha" });
   expect(workspace.result.current.tabs).toHaveLength(2);
   expect(workspace.result.current.selected).toBe("thread:alpha:root-a");
@@ -980,7 +970,7 @@ test("agents open thread tabs in the background and never close a shown one", ()
     { root: "r1", pane: "side", shown: false },
   ]);
   // The viewer opens another thread and one from another channel; an agent's
-  // later tab leaves their selection, and agents never see the other channel's.
+  // later tab leaves their selection, and agents list only their channel's.
   act(() => page.result.current.openThreadTab("beta", "r3", "r3"));
   act(() => page.result.current.openThreadTab("alpha", "r2", "r2"));
   act(() => {
@@ -1007,10 +997,16 @@ test("agents open thread tabs in the background and never close a shown one", ()
     "thread:alpha:r4",
   ]);
   expect(page.result.current.selected).toBe("thread:alpha:r2");
-  // Other channels and the Solo workspace keep their own tabs.
-  expect(tabs.list("beta")).toEqual([]);
+  // Every channel and page shows the one workspace's tabs.
+  expect(tabs.list("beta")).toEqual([
+    { root: "r3", pane: "side", shown: false },
+  ]);
   const solo = renderHook(() => useChannelTabState(session, "alpha", "solo"));
-  expect(solo.result.current.tabs).toEqual([]);
+  expect(solo.result.current.tabs.map((tab) => tab.id)).toEqual([
+    "thread:beta:r3",
+    "thread:alpha:r2",
+    "thread:alpha:r4",
+  ]);
 });
 
 test("an agent's tab leaves a page's side panel showing", () => {

@@ -15,6 +15,7 @@ import {
   inTerminal,
   stepConversation,
 } from "./conversation-rows";
+import { watchWorkingThreads } from "./working-tabs";
 export const inject = [
   "pages",
   "relay",
@@ -41,6 +42,25 @@ export const apply: PluginModule["apply"] = (ctx) => {
   ));
   const relay = ctx.relay;
   const navigator = ctx.navigation;
+  ctx.effect(() => {
+    let release: (() => void) | undefined;
+    let bound: unknown;
+    const bind = () => {
+      const connection = relay.snapshot();
+      const next =
+        connection.status === "ready" ? connection.session : undefined;
+      if (next === bound) return;
+      release?.();
+      bound = next;
+      release = next && watchWorkingThreads(next, navigator);
+    };
+    const stop = relay.subscribe(bind);
+    bind();
+    return () => {
+      stop();
+      release?.();
+    };
+  });
   ctx.conversation.registerMessageAction({
     id: "start-solo-chat",
     title: "Start Solo chat",
