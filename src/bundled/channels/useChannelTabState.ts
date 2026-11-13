@@ -248,6 +248,41 @@ const withoutRequests = (tab: ConversationTab): ConversationTab =>
         attentionRequest: undefined,
       }
     : tab;
+type ThreadTab = Extract<ConversationTab, { kind: "thread" }>;
+const NAME_LIMIT = 300;
+function readNames(key: string | undefined): Record<string, string> {
+  if (!key) return {};
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "{}");
+    return saved && typeof saved === "object" && !Array.isArray(saved)
+      ? Object.fromEntries(
+          Object.entries(saved).filter(
+            (entry): entry is [string, string] =>
+              typeof entry[1] === "string" && entry[1].length > 0,
+          ),
+        )
+      : {};
+  } catch {
+    return {};
+  }
+}
+function writeNames(
+  key: string | undefined,
+  names: Readonly<Record<string, string>>,
+) {
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(names));
+  } catch {
+    // Storage is full or off: the names last for this run.
+  }
+}
+const capNames = (names: Readonly<Record<string, string>>) => {
+  const entries = Object.entries(names);
+  return entries.length > NAME_LIMIT
+    ? Object.fromEntries(entries.slice(-NAME_LIMIT))
+    : names;
+};
 function createTabStore(scope?: string) {
   const owner = { channels: (scope && visitOwners.get(scope)?.channels) || {} };
   let channels: Record<string, State> = Object.fromEntries(
@@ -277,8 +312,50 @@ function createTabStore(scope?: string) {
       selected: shared.selected,
       paneOpen: shared.paneOpen,
     });
+  // A thread's name outlives its tab, so a reopened tab and the Activity list
+  // go on calling a thread what the viewer did.
+  const namesKey = scope ? `buzz.thread-names.v1:${scope}` : undefined;
+  let names: Readonly<Record<string, string>> = readNames(namesKey);
+  const nameOf = (tab: ThreadTab) => `${tab.channelId}:${rootOfTab(tab)}`;
+  /** A tab that was just opened without a name takes the one its thread had. */
+  const withKnownNames = (previous: State, next: State): State => {
+    const had = new Set(previous.tabs.map((tab) => tab.id));
+    let changed = false;
+    const tabs = next.tabs.map((tab) => {
+      if (tab.kind !== "thread" || tab.name || had.has(tab.id)) return tab;
+      const kept = names[nameOf(tab)];
+      if (!kept) return tab;
+      changed = true;
+      return { ...tab, name: kept };
+    });
+    return changed ? { ...next, tabs } : next;
+  };
+  const rememberNames = (previous: State, next: State) => {
+    const was = new Map(
+      previous.tabs.flatMap((tab) =>
+        tab.kind === "thread" ? [[tab.id, tab.name] as const] : [],
+      ),
+    );
+    let updated = names;
+    for (const tab of next.tabs) {
+      if (tab.kind !== "thread") continue;
+      if (was.has(tab.id) ? was.get(tab.id) === tab.name : !tab.name) continue;
+      const thread = nameOf(tab);
+      if (tab.name) {
+        if (updated[thread] === tab.name) continue;
+        updated = { ...updated, [thread]: tab.name };
+      } else {
+        const { [thread]: _, ...rest } = updated;
+        updated = rest;
+      }
+    }
+    if (updated === names) return;
+    names = capNames(updated);
+    writeNames(namesKey, names);
+  };
   return {
     seed: seeded,
+    names: () => names,
     visible: (key: string) => mounts.has(key),
     mount(key: string) {
       mounts.set(key, (mounts.get(key) ?? 0) + 1);
@@ -328,8 +405,10 @@ function createTabStore(scope?: string) {
     /** Changes one page's channel workspace. */
     update(key: string, change: (previous: State) => State) {
       const previous = channels[key] ?? seeded();
-      const next = change(previous);
-      if (next === previous) return;
+      const changed = change(previous);
+      if (changed === previous) return;
+      const next = withKnownNames(previous, changed);
+      rememberNames(previous, next);
       const before = side(previous);
       const after = side(next);
       const sameTab = (a: ConversationTab, b: ConversationTab) => a.id === b.id;
@@ -545,6 +624,18 @@ export function channelTabs(session: RelaySession, navigation?: Navigation) {
       return true;
     },
   };
+}
+
+/** What the viewer named a thread, by channel and thread root, kept after its
+ * tab closes. */
+export function useThreadNames(session: RelaySession) {
+  const store = storeOf(session);
+  const names = useSyncExternalStore(store.subscribe, store.names);
+  return useCallback(
+    (channelId: string, rootId: string): string | undefined =>
+      names[`${channelId}:${rootId}`],
+    [names],
+  );
 }
 
 /** No credentials, page callbacks, or DOM elements are retained. */

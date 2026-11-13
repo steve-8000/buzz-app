@@ -1,3 +1,4 @@
+import { useThreadNames } from "../channels/useChannelTabState";
 import { reactionRows } from "./reaction-rows";
 import {
   useCallback,
@@ -159,6 +160,7 @@ function InboxPreviewCard({
       void session.inboxFeed.reactions.ensure();
     }
   }, [session, list.status, list.asOf, refreshAfterRoster]);
+  const threadName = useThreadNames(session);
   const channelOf = (channelId: string) =>
     list.channels.find((channel) => channel.id === channelId);
   const recent = [...inbox.items].sort(
@@ -341,6 +343,10 @@ function InboxPreviewCard({
                       channelOf(item.channelId),
                       profiles,
                       name,
+                      threadName(
+                        row.item.channelId,
+                        row.item.rootId ?? row.item.messageId,
+                      ),
                     )}
                     media={session.media}
                     feed={feed}
