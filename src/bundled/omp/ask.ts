@@ -8,7 +8,7 @@ const HINT = {
   select: "Reply with a number, or `deny` (mention me).",
   text: "Reply with the text, or `deny` (mention me).",
 } as const;
-const EXPIRY = /^Refused automatically after \d+ minutes\.$/;
+const EXPIRY = /^Refused automatically after (\d+) minutes\.$/;
 const OPTION = /^(\d+)\. (.+)$/;
 
 export function formatQuestion(request: UiRequest, minutes: number) {
@@ -36,17 +36,21 @@ export function retryHint(request: UiRequest) {
 }
 
 export type Asked = Readonly<
-  { kind: "confirm" } | { kind: "select"; options: readonly string[] }
+  { minutes: number } & (
+    | { kind: "confirm" }
+    | { kind: "select"; options: readonly string[] }
+  )
 >;
 
 /** The yes/no or pick-one question a message holds, when it is one. */
 export function parseQuestion(content: string): Asked | undefined {
   const lines = content.split("\n");
   const at = lines.length;
-  if (!lines[0]?.startsWith("🔐 ") || !EXPIRY.test(lines[at - 1] ?? ""))
-    return undefined;
+  const expiry = EXPIRY.exec(lines[at - 1] ?? "");
+  if (!lines[0]?.startsWith("🔐 ") || !expiry) return undefined;
+  const minutes = Number(expiry[1]);
   const hint = lines[at - 2];
-  if (hint === HINT.confirm) return { kind: "confirm" };
+  if (hint === HINT.confirm) return { kind: "confirm", minutes };
   if (hint !== HINT.select || lines[at - 3] !== "") return undefined;
   const rows: RegExpExecArray[] = [];
   for (let line = at - 4; line >= 0; line--) {
@@ -56,5 +60,5 @@ export function parseQuestion(content: string): Asked | undefined {
   }
   if (!rows.length || rows.some((row, index) => Number(row[1]) !== index + 1))
     return undefined;
-  return { kind: "select", options: rows.map((row) => row[2] ?? "") };
+  return { kind: "select", minutes, options: rows.map((row) => row[2] ?? "") };
 }

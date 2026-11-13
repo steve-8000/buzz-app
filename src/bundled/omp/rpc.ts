@@ -345,16 +345,28 @@ const DENY =
 const LEADING_NUMBER =
   /^(?:(?:approve|approved|ok|okay|yes|승인|허용)[\s,:]+)?(\d+)(?=$|[\s.,:)\-—번])/i;
 
+/** A reply without the mentions of the agent. */
+function plain(reply: string) {
+  return reply
+    .replace(/nostr:(npub|nprofile)1[a-z0-9]+/gi, " ")
+    .replace(/(^|\s)@\S+/g, " ")
+    .trim();
+}
+
+/** A reply that is only an answer word or a number. With no question
+ * waiting it was meant for one that is gone, so it is not a message to omp. */
+export function isAnswerWord(reply: string) {
+  const word = plain(reply).replace(/[.!]+$/, "");
+  return APPROVE.test(word) || DENY.test(word) || /^\d+$/.test(word);
+}
+
 /** What a person's reply to a question means, or undefined when it is not an
  * answer. Mentions of the agent are not part of the answer. */
 export function answerTo(
   request: UiRequest,
   reply: string,
 ): UiAnswer | undefined {
-  const text = reply
-    .replace(/nostr:(npub|nprofile)1[a-z0-9]+/gi, " ")
-    .replace(/(^|\s)@\S+/g, " ")
-    .trim();
+  const text = plain(reply);
   if (!text) return undefined;
   const word = text.replace(/[.!]+$/, "");
   if (request.method === "confirm") {

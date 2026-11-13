@@ -4,9 +4,6 @@ import { Button } from "../../shared/design-system/ui/Button";
 import { parseQuestion } from "./ask";
 import styles from "./Ask.module.css";
 
-/** The longest an agent waits for an answer is 240 minutes (its settings). */
-const MAX_AGE_SECONDS = 240 * 60;
-
 /** Under an owned agent's question: a button for each answer, which replies in
  * the thread as typing it would. Nothing for any other message. */
 export function AskButtons({
@@ -21,8 +18,7 @@ export function AskButtons({
   if (!message || !ask) return null;
   if (session.profiles.owner?.(message.authorId) !== session.viewer)
     return null;
-  if (!chosen && Date.now() / 1000 - message.createdAt > MAX_AGE_SECONDS)
-    return null;
+  if (Date.now() / 1000 - message.createdAt > ask.minutes * 60) return null;
 
   const choices =
     ask.kind === "confirm"
@@ -55,10 +51,10 @@ export function AskButtons({
     }
   };
 
-  if (chosen)
+  if (chosen !== undefined || message.replyCount > 0)
     return (
       <p className={styles.note} role="status">
-        Answered: {chosen}
+        {chosen ? `Answered: ${chosen}` : "Answered"}
       </p>
     );
   return (

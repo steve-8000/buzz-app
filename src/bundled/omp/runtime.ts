@@ -29,6 +29,7 @@ import {
 import {
   answerTo,
   type Frame,
+  isAnswerWord,
   isRecord,
   OmpRpc,
   type UiAnswer,
@@ -179,6 +180,16 @@ export class OmpRuntime {
       const answer = answerTo(session.pending.request, wordsOf(delivery));
       if (answer) session.pending.settle(answer);
       else await this.say(session, retryHint(session.pending.request));
+      return;
+    }
+
+    // A second click on a button whose question is gone: sent on, it would
+    // start a run, and omp's approval gate forgets what was approved.
+    if (isAnswerWord(wordsOf(delivery))) {
+      await this.say(
+        session,
+        "No question is waiting, so that reply was not sent to omp.",
+      );
       return;
     }
 
