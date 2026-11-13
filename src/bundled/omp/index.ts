@@ -4,6 +4,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { PluginModule } from "../../plugins/api";
 import { type Config, config, DEFAULT_CONFIG } from "./config";
+import { AskButtons } from "./AskButtons";
 import { OmpSettings } from "./OmpSettings";
 import { OmpRuntime } from "./runtime";
 
@@ -12,7 +13,7 @@ export const TYPE_ID = "omp";
  * hand-over, which includes making the worktree and starting omp. */
 const HANDOVER_MS = 2 * 60_000;
 
-export const inject = ["agents", "host"];
+export const inject = ["agents", "host", "conversation"];
 export const apply: PluginModule["apply"] = (ctx) => {
   // Only the desktop app can start processes; no unusable type elsewhere.
   if (!isTauri()) return;
@@ -23,6 +24,12 @@ export const apply: PluginModule["apply"] = (ctx) => {
     void runtime.dispose();
   });
 
+  ctx.conversation.registerAccessory({
+    id: "omp-ask",
+    title: "omp questions",
+    placement: "message",
+    component: AskButtons,
+  });
   agents.register<Config>({
     id: TYPE_ID,
     title: "Oh My Pi",

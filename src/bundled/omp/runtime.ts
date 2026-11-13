@@ -10,6 +10,7 @@ import type {
 import type { AgentHandle, Delivery } from "../../features/agents/service";
 import type { Host, HostProcess } from "../../features/host/service";
 import { Admission } from "./admission";
+import { formatQuestion, retryHint } from "./ask";
 import { type Config, config } from "./config";
 import { intro, slim } from "./prompt";
 import {
@@ -93,23 +94,6 @@ function wordsOf(delivery: Delivery<Config>) {
     : "";
 }
 
-function formatQuestion(request: UiRequest, minutes: number) {
-  const lines = [`🔐 **${request.title || "omp asks"}**`];
-  if (request.message) lines.push("", request.message);
-  if (request.method === "confirm")
-    lines.push("", "Reply `approve` or `deny` (mention me).");
-  else if (request.method === "select")
-    lines.push(
-      "",
-      ...(request.options ?? []).map((option, at) => `${at + 1}. ${option}`),
-      "",
-      "Reply with a number, or `deny` (mention me).",
-    );
-  else lines.push("", "Reply with the text, or `deny` (mention me).");
-  lines.push(`Refused automatically after ${minutes} minutes.`);
-  return lines.join("\n");
-}
-
 function target(frame: Frame) {
   const args = frame.args;
   if (!isRecord(args)) return undefined;
@@ -164,15 +148,11 @@ export class OmpRuntime {
     if (session.pending) {
       const answer = answerTo(session.pending.request, wordsOf(delivery));
       if (answer) session.pending.settle(answer);
-      else
-        await this.say(
-          session,
-          "Reply `approve` or `deny` to the question above.",
-        );
+      else await this.say(session, retryHint(session.pending.request));
       return;
     }
 
-    if (session.busy && session.rpc) {
+    if ((session.busy || session.rpc?.streaming) && session.rpc) {
       const prompt = await this.harness.turnPrompt(
         delivery,
         conversation,
@@ -216,6 +196,26 @@ export class OmpRuntime {
 
   async dispose() {
     await Promise.all([...this.sessions.values()].map((s) => this.close(s)));
+  }
+
+  /** A run omp began by itself, as after a background job or a queued
+   * message: its reply is posted like a turn's. */
+  private async continued(session: Session) {
+    const rpc = session.rpc;
+    if (!rpc) return;
+    session.busy = true;
+    clearTimeout(session.idle);
+    try {
+      const end = await rpc.nextEnd();
+      const text = end.error ? `⚠️ ${end.error}` : end.text;
+      if (text) await this.say(session, text, !!end.error);
+    } catch {
+      // The process ended; its exit already settled the session.
+    } finally {
+      session.busy = false;
+      if (!session.pending && this.sessions.get(session.id) === session)
+        session.idle = setTimeout(() => void this.close(session), IDLE_MS);
+    }
   }
 
   private async turn(session: Session, delivery: Delivery<Config>) {
@@ -467,6 +467,9 @@ export class OmpRuntime {
           session.proc = undefined;
         }
         session.pending?.settle({ cancelled: true });
+      },
+      started: () => {
+        if (!session.busy) void this.continued(session);
       },
     });
     rpc = client;
