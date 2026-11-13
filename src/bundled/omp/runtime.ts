@@ -17,6 +17,8 @@ import { Admission } from "./admission";
 import { answerLabel, formatAnswered, formatQuestion, retryHint } from "./ask";
 import { type Config, config } from "./config";
 import { diagramsOf, extension, type Shot, shotsOf } from "./media";
+import { logKey, type SessionLog, sessionLog } from "./log";
+import { Narrator, targetOf } from "./narrator";
 import { intro, slim } from "./prompt";
 import {
   type Choice,
@@ -30,7 +32,6 @@ import {
   answerTo,
   type Frame,
   isAnswerWord,
-  isRecord,
   OmpRpc,
   type UiAnswer,
   type UiRequest,
@@ -101,6 +102,9 @@ type Session = {
   stderr: string;
   stopped: AbortController;
   media: Media;
+  /** What the session has said and done, for the log panel. */
+  log: SessionLog;
+  narrator: Narrator;
 };
 
 function errorText(error: unknown) {
@@ -118,16 +122,6 @@ function wordsOf(delivery: Delivery<Config>) {
   return delivery.trigger.type === "mention"
     ? delivery.trigger.event.content
     : "";
-}
-
-function target(frame: Frame) {
-  const args = frame.args;
-  if (!isRecord(args)) return undefined;
-  for (const key of ["path", "file", "command", "pattern", "query"]) {
-    const value = args[key];
-    if (typeof value === "string" && value) return value.slice(0, 120);
-  }
-  return undefined;
 }
 
 export class OmpRuntime {
@@ -151,6 +145,10 @@ export class OmpRuntime {
     const id = `${delivery.agent.key}\n${conversation.key}`;
     let session = this.sessions.get(id);
     if (!session) {
+      const log = sessionLog(
+        logKey(delivery.agent.pubkey, conversation.channel, conversation.root),
+        `${delivery.agent.name} · ${conversation.where}`,
+      );
       session = {
         id,
         agent: delivery.agent,
@@ -164,6 +162,8 @@ export class OmpRuntime {
         asking: Promise.resolve(),
         stderr: "",
         stopped: new AbortController(),
+        log,
+        narrator: new Narrator(log),
         media: {
           shots: [],
           diagrams: [],
@@ -503,10 +503,16 @@ export class OmpRuntime {
           );
       },
       event: (frame) => {
+        session.narrator.feed(frame);
         if (frame.type === "tool_execution_start") {
           const tool =
             typeof frame.toolName === "string" ? frame.toolName : "tool";
-          session.delivery?.step?.(tool, target(frame));
+          session.delivery?.step?.(
+            tool,
+            tool === "wait"
+              ? (session.narrator.waiting() ?? "a reply or a background job")
+              : targetOf(frame.args),
+          );
         }
         this.collect(session, frame);
       },
@@ -556,13 +562,17 @@ export class OmpRuntime {
               const current = session.pending === pending;
               if (current) session.pending = undefined;
               resolve(answer);
-              if (current) void this.answered(session, pending, label);
+              if (current) {
+                session.log.add("note", `→ ${label}`);
+                void this.answered(session, pending, label);
+              }
             },
             timer: setTimeout(() => {
               pending.settle(refused, "⏱ No answer in time, refused");
             }, minutes * 60_000),
           };
           session.pending = pending;
+          session.log.add("note", `? ${request.title || "omp asks"}`);
           pending.posted = this.say(
             session,
             formatQuestion(request, minutes),

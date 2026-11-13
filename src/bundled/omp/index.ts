@@ -6,6 +6,8 @@ import type { PluginModule } from "../../plugins/api";
 import { type Config, config, DEFAULT_CONFIG } from "./config";
 import { AskButtons } from "./AskButtons";
 import { OmpSettings } from "./OmpSettings";
+import { LogPanel } from "./LogPanel";
+import { parseLogTarget } from "./log";
 import { OmpRuntime } from "./runtime";
 
 export const TYPE_ID = "omp";
@@ -13,7 +15,7 @@ export const TYPE_ID = "omp";
  * hand-over, which includes making the worktree and starting omp. */
 const HANDOVER_MS = 2 * 60_000;
 
-export const inject = ["agents", "host", "conversation"];
+export const inject = ["agents", "host", "conversation", "panels"];
 export const apply: PluginModule["apply"] = (ctx) => {
   // Only the desktop app can start processes; no unusable type elsewhere.
   if (!isTauri()) return;
@@ -29,6 +31,13 @@ export const apply: PluginModule["apply"] = (ctx) => {
     title: "omp questions",
     placement: "message",
     component: AskButtons,
+  });
+  ctx.panels.register({
+    id: "log",
+    title: "Activity log",
+    matches: (url) => !!parseLogTarget(url),
+    keepOpen: true,
+    component: LogPanel,
   });
   agents.register<Config>({
     id: TYPE_ID,

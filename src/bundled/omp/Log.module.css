@@ -1,0 +1,67 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.header {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  border-block-end: 1px solid var(--border-standard);
+  color: var(--text-secondary);
+  font-size: var(--text-body-sm);
+  line-height: var(--text-body-sm--line-height);
+}
+.log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-2) var(--space-4);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tool,
+.user {
+  color: var(--text-standard);
+  font-weight: 600;
+}
+.tool {
+  margin-block-start: var(--space-1);
+}
+.text {
+  color: var(--text-standard);
+}
+.out {
+  color: var(--text-secondary);
+  padding-inline-start: var(--space-4);
+}
+.think,
+.note {
+  color: var(--text-subtle);
+}
+.think {
+  font-style: italic;
+}
+.error {
+  color: var(--text-danger);
+}
+.more {
+  margin-block-end: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-standard);
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.empty {
+  margin: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-body-sm);
+}
