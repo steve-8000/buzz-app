@@ -106,12 +106,17 @@ export type HarnessKit = Readonly<{
     options?: Readonly<{ read?(path: string): Promise<Uint8Array> }>,
   ): McpHandler;
   /** Posts `text` as the agent in the conversation: in the event's thread, or
-   * at the top level. `notifyOwner` tags the owner, as for a failed turn. */
+   * at the top level. `notifyOwner` tags the owner, as for a failed turn;
+   * `tags` are added as they are, such as `imeta` for files uploaded as the
+   * agent. */
   reply(
     agent: AgentHandle,
     conversation: HarnessConversation,
     text: string,
-    options?: Readonly<{ notifyOwner?: boolean }>,
+    options?: Readonly<{
+      notifyOwner?: boolean;
+      tags?: readonly (readonly string[])[];
+    }>,
   ): Promise<void>;
 }>;
 
@@ -470,6 +475,7 @@ export function harnessKit(sources: Sources): HarnessKit {
             ? []
             : [["e", threadReference(event)?.rootId ?? event.id, "", "reply"]]),
           ...(options.notifyOwner ? [["p", agent.owner]] : []),
+          ...(options.tags ?? []),
         ],
       });
     },

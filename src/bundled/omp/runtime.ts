@@ -3,6 +3,10 @@
 // computer. omp's questions (approvals, choices) are posted into the
 // conversation and answered by the owner's next message; a message that is
 // not an answer steers the run that is under way.
+import {
+  attachmentMarkdown,
+  attachmentName,
+} from "../../features/relay/attachments";
 import type {
   HarnessConversation,
   HarnessKit,
@@ -12,6 +16,7 @@ import type { Host, HostProcess } from "../../features/host/service";
 import { Admission } from "./admission";
 import { formatQuestion, retryHint } from "./ask";
 import { type Config, config } from "./config";
+import { diagramsOf, extension, type Shot, shotsOf } from "./media";
 import { intro, slim } from "./prompt";
 import {
   type Choice,
@@ -38,11 +43,27 @@ export const GLOBAL_LIMIT = 8;
 const DATA_ROOT = "~/.buzz/omp";
 /** Posts are cut here; the relay refuses very long messages. */
 const REPLY_LIMIT = 6000;
+/** Pictures posted per run, so a long QA pass cannot flood the conversation. */
+const SHOT_LIMIT = 8;
+/** Pictures that come close together go out as one message. */
+const SHOT_DELAY_MS = 1500;
 
 type Pending = {
   request: UiRequest;
   settle(answer: UiAnswer): void;
   timer: ReturnType<typeof setTimeout>;
+};
+
+/** What a run showed that is waiting to be posted. */
+type Media = {
+  shots: Shot[];
+  diagrams: string[];
+  /** Pictures and diagrams already taken this run. */
+  seen: Set<string>;
+  /** Pictures posted this run. */
+  posted: number;
+  timer?: ReturnType<typeof setTimeout> | undefined;
+  sending: Promise<unknown>;
 };
 
 type Session = {
@@ -75,6 +96,7 @@ type Session = {
   delivery?: Delivery<Config> | undefined;
   stderr: string;
   stopped: AbortController;
+  media: Media;
 };
 
 function errorText(error: unknown) {
@@ -138,6 +160,13 @@ export class OmpRuntime {
         asking: Promise.resolve(),
         stderr: "",
         stopped: new AbortController(),
+        media: {
+          shots: [],
+          diagrams: [],
+          seen: new Set(),
+          posted: 0,
+          sending: Promise.resolve(),
+        },
       };
       this.sessions.set(id, session);
     }
@@ -205,6 +234,8 @@ export class OmpRuntime {
     if (!rpc) return;
     session.busy = true;
     clearTimeout(session.idle);
+    session.media.posted = 0;
+    session.media.seen.clear();
     try {
       const end = await rpc.nextEnd();
       const text = end.error ? `⚠️ ${end.error}` : end.text;
@@ -221,6 +252,8 @@ export class OmpRuntime {
   private async turn(session: Session, delivery: Delivery<Config>) {
     const cfg = session.config;
     let release: (() => void) | undefined;
+    session.media.posted = 0;
+    session.media.seen.clear();
     try {
       const repo = await this.locate(session, cfg);
       release = await this.admission.acquire(
@@ -460,6 +493,7 @@ export class OmpRuntime {
             typeof frame.toolName === "string" ? frame.toolName : "tool";
           session.delivery?.step?.(tool, target(frame));
         }
+        this.collect(session, frame);
       },
       exited: () => {
         if (session.rpc === client) {
@@ -520,7 +554,84 @@ export class OmpRuntime {
     return next;
   }
 
+  /** Takes the pictures and diagrams a frame shows, to post soon. */
+  private collect(session: Session, frame: Frame) {
+    const media = session.media;
+    let added = false;
+    for (const shot of shotsOf(frame)) {
+      if (
+        media.seen.has(shot.key) ||
+        media.posted + media.shots.length >= SHOT_LIMIT
+      )
+        continue;
+      media.seen.add(shot.key);
+      media.shots.push(shot);
+      added = true;
+    }
+    for (const diagram of diagramsOf(frame)) {
+      if (media.seen.has(diagram)) continue;
+      media.seen.add(diagram);
+      media.diagrams.push(diagram);
+      added = true;
+    }
+    if (!added) return;
+    clearTimeout(media.timer);
+    media.timer = setTimeout(
+      () => void this.flushMedia(session),
+      SHOT_DELAY_MS,
+    );
+  }
+
+  /** Posts what the run has shown so far; later posts come after it. */
+  private flushMedia(session: Session) {
+    const media = session.media;
+    clearTimeout(media.timer);
+    const shots = media.shots.splice(0);
+    const diagrams = media.diagrams.splice(0);
+    if (shots.length || diagrams.length)
+      media.sending = media.sending
+        .then(() => this.postMedia(session, shots, diagrams))
+        .catch(() => undefined);
+    return media.sending;
+  }
+
+  private async postMedia(
+    session: Session,
+    shots: readonly Shot[],
+    diagrams: readonly string[],
+  ) {
+    const tags: string[][] = [];
+    const links: string[] = [];
+    for (const shot of shots) {
+      try {
+        const upload = await session.agent.upload(shot.data, shot.mime);
+        session.media.posted++;
+        const name = attachmentName(
+          `${shot.tool}-${session.media.posted}.${extension(upload.type)}`,
+        );
+        tags.push([
+          "imeta",
+          `url ${upload.url}`,
+          `m ${upload.type}`,
+          `size ${upload.size}`,
+          `x ${upload.sha256}`,
+          `filename ${name}`,
+          ...(upload.dim ? [`dim ${upload.dim}`] : []),
+        ]);
+        links.push(attachmentMarkdown(name, upload));
+      } catch {
+        // A picture the community refuses is left out; the run goes on.
+      }
+    }
+    const text = [...diagrams, ...links].join("\n\n");
+    if (text)
+      await this.harness
+        .reply(session.agent, session.conversation, text, { tags })
+        .catch(() => undefined);
+  }
+
   private async say(session: Session, text: string, notifyOwner = false) {
+    await this.flushMedia(session);
     await this.harness
       .reply(session.agent, session.conversation, clip(text), { notifyOwner })
       .catch(() => undefined);
