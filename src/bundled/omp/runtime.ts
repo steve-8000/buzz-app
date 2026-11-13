@@ -45,8 +45,9 @@ const DATA_ROOT = "~/.buzz/omp";
 const REPLY_LIMIT = 6000;
 /** Pictures posted per run, so a long QA pass cannot flood the conversation. */
 const SHOT_LIMIT = 8;
-/** Pictures that come close together go out as one message. */
-const SHOT_DELAY_MS = 1500;
+/** Pictures and diagrams shown within this long of the first go out as one
+ * message, or sooner when the run posts something else. */
+const SHOT_WINDOW_MS = 60_000;
 
 type Pending = {
   request: UiRequest;
@@ -575,10 +576,9 @@ export class OmpRuntime {
       added = true;
     }
     if (!added) return;
-    clearTimeout(media.timer);
-    media.timer = setTimeout(
+    media.timer ??= setTimeout(
       () => void this.flushMedia(session),
-      SHOT_DELAY_MS,
+      SHOT_WINDOW_MS,
     );
   }
 
@@ -586,6 +586,7 @@ export class OmpRuntime {
   private flushMedia(session: Session) {
     const media = session.media;
     clearTimeout(media.timer);
+    media.timer = undefined;
     const shots = media.shots.splice(0);
     const diagrams = media.diagrams.splice(0);
     if (shots.length || diagrams.length)
