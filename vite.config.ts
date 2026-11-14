@@ -78,7 +78,9 @@ export default defineConfig(async ({ command, mode }) => {
   const live = command === "serve" && Boolean(env.BUZZ_DEV_VIEWER?.trim());
   const federatedUrl = federatedBuilderlabUrl();
   const builderlabUrl = federatedUrl ?? "";
-  const appsControlPlane = builderlabUrl ? sharedAppsControlPlane(builderlabUrl) : "";
+  const appsControlPlane = builderlabUrl
+    ? sharedAppsControlPlane(builderlabUrl)
+    : "";
   const aliases = env.BUZZ_COMMUNITY_ALIASES ?? "";
   parseCommunityAliases(aliases);
   const externalMcpCommunities = (env.BUZZ_EXTERNAL_MCP_COMMUNITIES ?? "")

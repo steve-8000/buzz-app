@@ -288,6 +288,22 @@ export type IdentityMarkProps = Readonly<{
   pubkey: string;
   profiles: RelaySession["profiles"];
 }>;
+/** A thread's replies, each with the host's own row for it. */
+export type ThreadFlowProps = Readonly<{
+  session: RelaySession;
+  channelId: string;
+  rootId: string;
+  replies: readonly Readonly<{ message: ChannelMessage; row: ReactElement }>[];
+}>;
+/** Lays out a thread's replies, which it may interleave with content of its
+ * own, such as the steps an agent took. It returns the host's rows, keyed as
+ * given, when it has nothing to add. The first contribution lays out every
+ * thread. */
+export type ThreadFlow = Readonly<{
+  id: string;
+  title: string;
+  component: ComponentType<ThreadFlowProps>;
+}>;
 export type ConversationExtensions = Readonly<{
   attachments?: ContributionReader<AttachmentRenderer>;
   messages?: ContributionReader<MessageRenderer>;
@@ -301,6 +317,7 @@ export type ConversationExtensions = Readonly<{
   linkPreviews?: ContributionReader<LinkPreviewRenderer>;
   codeBlocks?: ContributionReader<CodeBlockRenderer>;
   annotators?: ContributionReader<ComposerAnnotator>;
+  threadFlows?: ContributionReader<ThreadFlow>;
 }>;
 
 /** One document revision of the draft an annotator may mark: the projected text

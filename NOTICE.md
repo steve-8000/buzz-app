@@ -38,6 +38,14 @@ explicit dictionary cleanup, and lazy loading for the session-owned catalog.
 The chart grammar, option sanitizer and data-row tables in `src/bundled/charts`
 are adapted from a Charts plugin by Alessandro Joabar (GitHub `sandro-sq`).
 
+The omp tool-call, approval, todo and notice mapping in
+`src/bundled/omp/transcript` is adapted from the omp provider of
+[Paseo](https://github.com/getpaseo/paseo)
+(`packages/server/src/server/agent/providers/omp`), revision
+`d13438ba50ed74c0d9057370b5f5c781aee0f687`. Apache-2.0 © Paseo contributors;
+the license is preserved in [LICENSE.paseo](LICENSE.paseo). This app rewrites
+the mappers without Paseo's schema layer and reduces them to omp 18's tools.
+
 OneDrive is a trademark of Microsoft.
 
 ## Harness brand marks

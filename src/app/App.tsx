@@ -99,17 +99,21 @@ export function App({ services }: { services: AppServices }) {
         value={isTauri() ? modalWindowDragHandlers : undefined}
       >
         <LaunchWindowControls />
-        {services.identity ? services.firstRunFederatedIdentity ? (
-          <Welcome
-            identity={services.identity}
-            communities={services.communities}
-            invites={services.invites}
-            federatedIdentity={services.firstRunFederatedIdentity}
-          >
-            {application}
-          </Welcome>
-        ) : (
-          <IdentitySetup identity={services.identity}>{application}</IdentitySetup>
+        {services.identity ? (
+          services.firstRunFederatedIdentity ? (
+            <Welcome
+              identity={services.identity}
+              communities={services.communities}
+              invites={services.invites}
+              federatedIdentity={services.firstRunFederatedIdentity}
+            >
+              {application}
+            </Welcome>
+          ) : (
+            <IdentitySetup identity={services.identity}>
+              {application}
+            </IdentitySetup>
+          )
         ) : (
           <ConnectedApp services={services} />
         )}

@@ -1,7 +1,8 @@
 # Gram
 
-Gram is a desktop fork of [Buzz](https://github.com/block/buzz-app). Its main
-community chat opens the original Paseo agent chat in a Thread on the right.
+Gram is a desktop fork of [Buzz](https://github.com/block/buzz-app). An Oh My Pi
+(omp) agent in a thread shows its work there as a session: its text, tool
+calls, plans and questions, in order, readable by everyone in the conversation.
 
 ## Self-hosted setup
 
@@ -11,56 +12,52 @@ communities by default. An operator can explicitly configure an identity
 server for a self-hosted deployment with `BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG`.
 The community Relay must be running separately.
 
-The embedded Paseo runtime is local; the selected model provider may still
-send prompts to its own remote API.
+omp runs on this computer; the selected model provider may still send prompts
+to its own remote API.
 
 On macOS, Gram stores its own identities, agent keys and tokens in
 `~/.gram/secrets` as unencrypted local files, with a `0700` directory and `0600`
 files. Other processes running as the same user and backups of that directory
 can read them. Existing Gram Keychain items are not imported automatically.
 The explicit Buzz identity import reads the old Buzz Keychain without removing
-its original. Provider CLIs manage their own authentication.
+its original. omp manages its own provider authentication.
 
-## Agent workspaces
+## Agent sessions
 
-Enable **Gram Agent** in **Settings → Plugins**, then create an agent with the
-**Gram Agent** harness. Choose its provider, model, workspace and repository
-settings. The inherited plugin identity `buzz.omp/omp` remains unchanged.
-Provider, model, instructions and workspace settings apply when a workstream
-is created; existing sessions retain their captured configuration.
+Create an agent with the **Oh My Pi** harness (plugin `buzz.omp`, type `omp`)
+and choose its model, repository folders and workspace. The `omp` executable
+must be installed and authenticated. Mention the agent in a channel and it
+answers in a thread; each thread is one omp session in its own git worktree.
 
-Mention an agent in the main chat to open its Paseo conversation in a Thread.
-The original Paseo conversation, composer and permission controls run directly
-inside Gram's existing Thread panel. Gram retains its channels, workspaces and
-tab navigation; supporting Paseo views open in Gram tabs. Multiple agents in
-one Thread can be selected separately. If startup fails, the request and local
-error remain visible while Gram is open.
+The agent drives omp in `--mode rpc-ui` on this computer. What it does is
+written to the conversation as items: one NIP-AR artifact (kind 45010, type
+`gram.session.item`) per step, rewritten as the step changes. The thread draws
+them between its messages, so every member who can read the thread follows the
+run, and the computer that runs the agent shows it without waiting for the
+relay. Only Gram draws these items; other Buzz clients show the thread's
+messages and ignore the artifacts.
 
-Gram owns one authenticated Paseo runtime bound to an ephemeral loopback port.
-It exposes the daemon's WebSocket, not a hosted Paseo web app; Paseo Relay and
-hosted Paseo services are not enabled. The short-lived runtime password is
-passed in memory, not in a URL or persistent host registry. Provider execution
-is not duplicated through the old direct OMP launcher. OMP is explicitly
-enabled and new sessions use a non-unattended permission mode. A configured
-model provider may still require its own network service.
+The request, the agent's final answer and its approval questions stay ordinary
+messages, so replies, mentions and the mobile buttons keep working. An approval
+or question also appears as a card in the thread; only the computer that runs
+the agent can answer it, and answering from the card or by message settles the
+same question.
 
-The request is a community message. Once the Paseo Thread opens, its results
-and follow-up messages remain local and only a completion notice is posted.
-An initial answer that completed before the Thread opened may already have
-been posted to the community. Tool output, permissions, terminal I/O, diffs
-and runtime diagnostics are not automatically published.
+Items include tool input and output, file contents and diffs, and are readable
+by every member of the channel. Strings that look like credentials (API keys,
+tokens, private keys, `NAME_TOKEN=value` assignments) are masked and each item
+is cut to fit one event, but masking is a heuristic: do not point an agent at
+secrets you do not want the channel to read. An item is written at most every
+few seconds while it changes, within the relay's write limit for agents.
 
-Session bindings, new conversation drafts and queued messages persist in Gram's
-local app data. Drafts from the previous embedded browser origin are not
-automatically migrated; its existing WebKit data is not deleted. The runtime
-and session database live under `~/.gram/runtime`; repository worktrees live
-under `~/.gram/worktrees` and are retained with the sessions.
-The default non-repository workspace is `~/.gram/workspaces`, separate from
-the runtime's private data. Paseo dictation and voice mode are disabled so
-startup does not download speech models.
+Data lives under `~/.gram/omp`: sessions in `sessions/`, worktrees in
+`worktrees/`. The default non-repository workspace is `~/.gram/workspaces`.
 The application identifier is `one.clab.gram`, with separate credential
-namespaces from Buzz. Provider CLIs and their existing authentication are
-still used; Gram does not copy their credentials.
+namespaces from Buzz.
+
+A conversation that is not a thread has no thread to show its session in: a DM,
+a Solo chat, or an agent set to one conversation per channel. The agent answers
+there as before.
 
 ## Build
 
@@ -72,30 +69,21 @@ pnpm install
 pnpm tauri build --bundles app
 ```
 
-The Tauri build hook stages the pinned Paseo server, CLI, production
-dependencies, native PTY module and Node executable before building the app.
 On macOS (13.5+) the bundle is `target/release/bundle/macos/Gram.app`.
-Use `pnpm tauri dev` for development; it also stages the runtime.
-The chosen provider executable (for example `omp`) must be installed and
-authenticated. The bundled `buzz` CLI and community protocols keep their
-upstream names for interoperability.
-Node `26.7.0` is an official standalone distribution, pinned with SHA-256 in
-`runtime/node.json`; Homebrew's dynamically linked executable is not copied.
-Stage the native runtime on a matching OS/architecture build host.
-Dependencies use a hoisted deployment layout so Tauri includes real package
-directories rather than dropping pnpm's directory symlinks.
+Use `pnpm tauri dev` for development. The bundled `buzz` CLI and community
+protocols keep their upstream names for interoperability.
 
 Local builds do not enable the upstream release updater. This fork does not
 claim upstream signing or notarization.
 
 ## Upstream and licensing
 
-Buzz and Paseo are Apache-2.0 projects. The embedded Paseo server and client are
-pinned to `0.16.0-beta.2`; the original conversation components are built from
-Paseo source revision `d13438ba50ed74c0d9057370b5f5c781aee0f687`.
+Buzz and Paseo are Apache-2.0 projects. The omp tool-call mapping in
+`src/bundled/omp/transcript` follows Paseo's omp provider, source revision
+`d13438ba50ed74c0d9057370b5f5c781aee0f687`; Paseo itself is not embedded or
+run.
 
 - [Buzz license](LICENSE) and [source attribution](NOTICE.md)
 - [Paseo license](LICENSE.paseo)
 - [Plugin architecture](docs/plugin-architecture.md)
 - [Upstream contributing guide](docs/contributing.md)
-

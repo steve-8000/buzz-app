@@ -1,0 +1,59 @@
+.segment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-block: var(--space-3);
+  padding-inline: var(--message-hover-inset, var(--space-4));
+}
+.head {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.name {
+  color: var(--text-primary);
+}
+.reason {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-standard);
+}
+.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-primary);
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-standard);
+  border-radius: var(--radius-lg);
+  background: var(--surface-inset);
+}
+.card[data-state="pending"] {
+  border-color: var(--border-focus);
+}
+.card > * {
+  margin-block: 0;
+}
+.cardTitle {
+  color: var(--text-primary);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}

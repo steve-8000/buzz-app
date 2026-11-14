@@ -28,7 +28,7 @@ export type Config = Readonly<{
 export const DEFAULT_CONFIG: Config = {
   repo: "",
   base: "main",
-  workspace: "~/.buzz/omp",
+  workspace: "~/.gram/workspaces",
   roots: [],
   model: "",
   thinking: "",

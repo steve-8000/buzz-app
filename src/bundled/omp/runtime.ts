@@ -155,9 +155,7 @@ export class OmpRuntime {
 
   async run(delivery: Delivery<Config>): Promise<void> {
     const cfg = config(delivery.config);
-    const conversation = await this.harness.conversation(delivery, cfg.scope, {
-      separateThreads: true,
-    });
+    const conversation = await this.harness.conversation(delivery, cfg.scope);
     if (!conversation) {
       delivery.ignored?.();
       return;
@@ -263,30 +261,37 @@ export class OmpRuntime {
     await Promise.all([...this.sessions.values()].map((s) => this.close(s)));
   }
 
-  /** The question a conversation's session waits on, for the card that shows
-   * it: only this computer can answer it. */
-  pending(channel: string, root: string | undefined, id: string) {
-    const session = this.find(channel, root);
+  /** The question an agent's session waits on in a conversation, for the card
+   * that shows it: only this computer can answer it. */
+  pending(
+    channel: string,
+    root: string | undefined,
+    author: string,
+    id: string,
+  ) {
+    const session = this.find(channel, root, author);
     return session?.pending?.request.id === id ? session.pending : undefined;
   }
 
-  /** Answers a conversation's question from its card, as the owner would by
+  /** Answers an agent's question from its card, as the owner would by
    * replying. */
   answer(
     channel: string,
     root: string | undefined,
+    author: string,
     id: string,
     answer: UiAnswer,
   ) {
-    const pending = this.pending(channel, root, id);
+    const pending = this.pending(channel, root, author, id);
     if (!pending) return false;
     pending.settle(answer);
     return true;
   }
 
-  private find(channel: string, root: string | undefined) {
+  private find(channel: string, root: string | undefined, author: string) {
     return [...this.sessions.values()].find(
       (session) =>
+        session.agent.pubkey === author &&
         session.conversation.channel === channel &&
         session.conversation.root === root,
     );
@@ -599,7 +604,7 @@ export class OmpRuntime {
         }
         this.collect(session, frame);
       },
-      exited: () => {
+      exited: (code) => {
         if (session.rpc === client) {
           session.rpc = undefined;
           session.proc = undefined;
@@ -609,6 +614,14 @@ export class OmpRuntime {
           "⏹ omp stopped",
           "cancelled",
         );
+        if (session.busy && code !== 0 && !session.stopRequested) {
+          const tail = session.stderr.trim().split("\n").slice(-6).join("\n");
+          session.builder.feed({
+            type: "notice",
+            level: "error",
+            message: `omp exited (${code ?? "signal"})${tail ? `\n${tail}` : ""}`,
+          });
+        }
       },
       started: () => {
         if (!session.busy) void this.continued(session);

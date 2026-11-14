@@ -36,6 +36,7 @@ import type {
   MessageAction,
   ContributionReader,
   PageTabsProps,
+  ThreadFlow,
 } from "./contracts";
 import type { RelaySession } from "../relay/session";
 
@@ -76,6 +77,9 @@ export type Conversation = {
   annotators: ContributionReader<ComposerAnnotator>;
   /** Marks on the focused composer's prose; see `ComposerAnnotator`. */
   registerAnnotator(annotator: ComposerAnnotator): void;
+  /** How a thread's replies are laid out; see `ThreadFlow`. */
+  threadFlows: ContributionReader<ThreadFlow>;
+  registerThreadFlow(flow: ThreadFlow): void;
   inline: ContributionReader<InlineRenderer>;
   registerInline(renderer: InlineRenderer): void;
   links: ContributionReader<LinkRenderer>;
@@ -143,7 +147,8 @@ function validate(
     | CodeBlockRenderer
     | MessageRenderer
     | MessageAction
-    | IdentityMark,
+    | IdentityMark
+    | ThreadFlow,
 ) {
   if (
     !value ||
@@ -168,6 +173,8 @@ export class ConversationService extends Service implements Conversation {
   private readonly completionEntries;
   readonly annotators;
   private readonly annotatorEntries;
+  readonly threadFlows;
+  private readonly threadFlowEntries;
   readonly inline;
   private readonly toolEntries;
   private readonly inlineEntries;
@@ -219,6 +226,12 @@ export class ConversationService extends Service implements Conversation {
     this.annotators = {
       snapshot: annotators.snapshot,
       subscribe: annotators.subscribe,
+    };
+    const threadFlows = createContributions<ThreadFlow>(ctx);
+    this.threadFlowEntries = threadFlows;
+    this.threadFlows = {
+      snapshot: threadFlows.snapshot,
+      subscribe: threadFlows.subscribe,
     };
     const inline = createContributions<InlineRenderer>(ctx);
     this.toolEntries = tools;
@@ -366,6 +379,10 @@ export class ConversationService extends Service implements Conversation {
   registerAnnotator(value: ComposerAnnotator) {
     validate(value);
     this.annotatorEntries.register(this.ctx, value);
+  }
+  registerThreadFlow(value: ThreadFlow) {
+    validate(value);
+    this.threadFlowEntries.register(this.ctx, value);
   }
   registerInline(value: InlineRenderer) {
     validate(value);

@@ -3,18 +3,41 @@
 // and omp's approvals and questions are answered from the conversation. What
 // a session does is shown to the whole conversation as it happens.
 import { isTauri } from "@tauri-apps/api/core";
+import { openSessionCollection } from "../../features/agent-session/collection";
+import type {
+  SessionAnswer,
+  SessionControls,
+} from "../../features/agent-session/controls";
+import type {
+  ApprovalItem,
+  QuestionItem,
+} from "../../features/agent-session/item";
 import { LiveItems } from "../../features/agent-session/live";
+import { sessionFlow } from "../../features/agent-session/SessionThread";
 import { sessionTranscripts } from "../../features/agent-session/transcripts";
 import type { PluginModule } from "../../plugins/api";
 import { type Config, config, DEFAULT_CONFIG } from "./config";
 import { AskButtons } from "./AskButtons";
 import { OmpSettings } from "./OmpSettings";
 import { OmpRuntime } from "./runtime";
+import type { UiAnswer } from "./rpc";
+import { APPROVE, DENY } from "./transcript/notes";
 
 export const TYPE_ID = "omp";
 /** A turn's run returns once its work is under way, so this bounds only the
  * hand-over, which includes making the worktree and starting omp. */
 const HANDOVER_MS = 2 * 60_000;
+
+/** The reply omp reads for what the card's reader chose. */
+function uiAnswer(
+  item: ApprovalItem | QuestionItem,
+  answer: SessionAnswer,
+): UiAnswer {
+  if (!("approved" in answer)) return answer;
+  return item.kind === "approval"
+    ? { value: answer.approved ? APPROVE : DENY }
+    : { confirmed: answer.approved };
+}
 
 export const inject = [
   "agents",
@@ -43,6 +66,25 @@ export const apply: PluginModule["apply"] = (ctx) => {
     title: "omp questions",
     placement: "message",
     component: AskButtons,
+  });
+  const collection = openSessionCollection(ctx);
+  const controls: SessionControls = {
+    canAnswer: (channel, root, author, item) =>
+      !!runtime.pending(channel, root, author, item.request),
+    answer: (channel, root, author, item, answer) => {
+      runtime.answer(
+        channel,
+        root,
+        author,
+        item.request,
+        uiAnswer(item, answer),
+      );
+    },
+  };
+  ctx.conversation.registerThreadFlow({
+    id: "omp-session",
+    title: "omp sessions",
+    component: sessionFlow({ collection, live }, controls),
   });
   agents.register<Config>({
     id: TYPE_ID,

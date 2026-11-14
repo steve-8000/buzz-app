@@ -150,10 +150,7 @@ function createIdentity() {
 // Install or reuse the helper and the local signing identity, and record the
 // code requirement the helper checks callers against.
 export function prepareCredentialHelper(root) {
-  const directory = join(
-    userInfo().homedir,
-    ".gram/dev-credential-helper",
-  );
+  const directory = join(userInfo().homedir, ".gram/dev-credential-helper");
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   chmodSync(directory, 0o700);
   const needed = protocol(root);

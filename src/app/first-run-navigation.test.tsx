@@ -144,7 +144,8 @@ function relayAnswer(args: unknown) {
 }
 
 const notice = () => screen.queryByText("This destination couldn’t open");
-const landing = () => screen.queryByRole("button", { name: "Create a new identity" });
+const landing = () =>
+  screen.queryByRole("button", { name: "Create a new identity" });
 async function firstRun() {
   const current = createServices();
   services = current;
