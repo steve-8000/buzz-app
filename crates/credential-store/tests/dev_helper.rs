@@ -105,14 +105,9 @@ fn human_restore_uses_the_selected_helper_and_fails_closed() {
         .success());
 
     let agent = |operation, value: &[u8]| {
-        dev_item(
-            operation,
-            "one.clab.gram.agents",
-            "agent-bundle-v1",
-            value,
-        )
-        .unwrap()
-        .map(|value| value.to_vec())
+        dev_item(operation, "one.clab.gram.agents", "agent-bundle-v1", value)
+            .unwrap()
+            .map(|value| value.to_vec())
     };
     for (body, expected) in [
         ("printf '{}'", Ok(b"{}".to_vec())),

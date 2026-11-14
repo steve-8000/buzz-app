@@ -413,8 +413,7 @@ const BUILDERLAB_FI_ROUTES: &[&str] = &[
 pub const BUILDERLAB_API_BASE_PATH: &str = env!("BUZZ_BUILDERLAB_API_BASE_PATH");
 pub fn bundled_manifests() -> Vec<Manifest> {
     let descriptor = env!("BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG");
-    let builderlab = if descriptor.is_empty()
-        || !BUILDERLAB_API_BASE_PATH.ends_with("/api/goose/")
+    let builderlab = if descriptor.is_empty() || !BUILDERLAB_API_BASE_PATH.ends_with("/api/goose/")
     {
         None
     } else {

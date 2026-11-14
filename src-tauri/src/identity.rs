@@ -250,8 +250,7 @@ mod platform {
                 Err("Another Buzz app is accessing secure storage. Retry shortly.".into())
             }
             Err(credentials::Error::Denied) => Err(
-                "Local secret storage access was denied. Check its permissions and retry."
-                    .into(),
+                "Local secret storage access was denied. Check its permissions and retry.".into(),
             ),
             Err(_) => Err(
                 "Your local identity could not be accessed. Retry without changing keys.".into(),

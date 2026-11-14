@@ -391,16 +391,8 @@ fn adoption_uses_production_adapter_and_reads_back_create_only_destination() {
                 "one.clab.gram.agents".into(),
                 account.clone()
             ),
-            (
-                "add".into(),
-                "one.clab.gram.agents".into(),
-                account.clone()
-            ),
-            (
-                "saved".into(),
-                "one.clab.gram.agents".into(),
-                account
-            ),
+            ("add".into(), "one.clab.gram.agents".into(), account.clone()),
+            ("saved".into(), "one.clab.gram.agents".into(), account),
         ]
     );
     let snapshot = store.list().unwrap();

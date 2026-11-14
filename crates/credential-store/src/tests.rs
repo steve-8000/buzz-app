@@ -292,10 +292,7 @@ fn human_identity_slots_stay_separate() {
     assert_eq!(human_service(true), "one.clab.gram.identity.debug");
     assert_eq!(human_service(false), "one.clab.gram.identity");
     assert_eq!(HUMAN_SERVICE, human_service(cfg!(debug_assertions)));
-    assert_eq!(
-        human_store(true),
-        "one.clab.gram.identity-store.debug"
-    );
+    assert_eq!(human_store(true), "one.clab.gram.identity-store.debug");
     assert_eq!(human_store(false), "one.clab.gram.identity-store");
     assert_eq!(HUMAN_STORE, human_store(cfg!(debug_assertions)));
     assert_eq!(PREVIOUS_HUMAN_SERVICE, HUMAN_STORE);
@@ -444,22 +441,52 @@ fn local_secrets_are_private_and_create_only() {
 
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("secrets");
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Absent));
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT),
+        Err(Error::Absent)
+    );
     file_store::write(&root, SERVICE, ACCOUNT, b"first", true).unwrap();
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT).unwrap().as_slice(), b"first");
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT)
+            .unwrap()
+            .as_slice(),
+        b"first"
+    );
     assert_eq!(
         file_store::write(&root, SERVICE, ACCOUNT, b"second", true),
         Err(Error::Occupied)
     );
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT).unwrap().as_slice(), b"first");
-    assert_eq!(fs::metadata(&root).unwrap().permissions().mode() & 0o777, 0o700);
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT)
+            .unwrap()
+            .as_slice(),
+        b"first"
+    );
+    assert_eq!(
+        fs::metadata(&root).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
     let path = file_store::path(&root, SERVICE, ACCOUNT);
-    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
-    assert_eq!(file_store::read(&root, SERVICE, "other"), Err(Error::Absent));
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        file_store::read(&root, SERVICE, "other"),
+        Err(Error::Absent)
+    );
     file_store::write(&root, SERVICE, ACCOUNT, b"updated", false).unwrap();
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT).unwrap().as_slice(), b"updated");
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT)
+            .unwrap()
+            .as_slice(),
+        b"updated"
+    );
     file_store::remove(&root, SERVICE, ACCOUNT).unwrap();
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Absent));
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT),
+        Err(Error::Absent)
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -472,7 +499,10 @@ fn local_secrets_refuse_loose_permissions_and_links() {
     file_store::write(&root, SERVICE, ACCOUNT, b"original", true).unwrap();
     let path = file_store::path(&root, SERVICE, ACCOUNT);
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Denied));
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT),
+        Err(Error::Denied)
+    );
     assert_eq!(
         file_store::write(&root, SERVICE, ACCOUNT, b"replacement", false),
         Err(Error::Denied)
@@ -482,11 +512,17 @@ fn local_secrets_refuse_loose_permissions_and_links() {
     let outside = temp.path().join("outside");
     fs::write(&outside, b"outside").unwrap();
     symlink(&outside, &path).unwrap();
-    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Denied));
+    assert_eq!(
+        file_store::read(&root, SERVICE, ACCOUNT),
+        Err(Error::Denied)
+    );
     assert_eq!(
         file_store::write(&root, SERVICE, ACCOUNT, b"replacement", false),
         Err(Error::Denied)
     );
-    assert_eq!(file_store::remove(&root, SERVICE, ACCOUNT), Err(Error::Denied));
+    assert_eq!(
+        file_store::remove(&root, SERVICE, ACCOUNT),
+        Err(Error::Denied)
+    );
     assert_eq!(fs::read(&outside).unwrap(), b"outside");
 }

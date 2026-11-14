@@ -46,14 +46,9 @@ int main(void) {
         .unwrap()
         .success());
     std::env::set_var("BUZZ_DEV_CREDENTIAL_HELPER", &closing_helper);
-    let reply = dev_item(
-        "read",
-        "one.clab.gram.agents",
-        "agent-bundle-v1",
-        &[],
-    )
-    .unwrap()
-    .map(|value| value.to_vec());
+    let reply = dev_item("read", "one.clab.gram.agents", "agent-bundle-v1", &[])
+        .unwrap()
+        .map(|value| value.to_vec());
     assert_eq!(reply, Ok(b"{}".to_vec()));
     std::env::remove_var("BUZZ_DEV_CREDENTIAL_HELPER");
 }

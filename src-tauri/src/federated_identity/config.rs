@@ -364,15 +364,17 @@ mod tests {
         ] {
             assert!(config.matches_relay(relay).unwrap(), "{relay}");
         }
-        assert_eq!(ids(&compiled(Some(STAGING)).unwrap()), ["bb-public-staging"]);
+        assert_eq!(
+            ids(&compiled(Some(STAGING)).unwrap()),
+            ["bb-public-staging"]
+        );
     }
 
     #[test]
     fn a_community_has_at_most_one_server() {
         let first = descriptor();
-        let list_with = |other: serde_json::Value| {
-            serde_json::to_string(&vec![first.clone(), other]).unwrap()
-        };
+        let list_with =
+            |other: serde_json::Value| serde_json::to_string(&vec![first.clone(), other]).unwrap();
         for hosts in [
             serde_json::json!(["*.communities.example"]),
             serde_json::json!(["team.communities.example"]),

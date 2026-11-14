@@ -346,8 +346,7 @@ fn federated_identity_servers(
             }
         }
     }
-    federated_identity_config::compiled(added.as_deref())
-        .unwrap_or_else(|error| panic!("{error}"))
+    federated_identity_config::compiled(added.as_deref()).unwrap_or_else(|error| panic!("{error}"))
 }
 
 #[cfg(test)]

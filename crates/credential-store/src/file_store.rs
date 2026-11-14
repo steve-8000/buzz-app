@@ -34,7 +34,11 @@ fn io(error: std::io::Error) -> Error {
 
 fn private(metadata: &fs::Metadata, directory: bool) -> Result<()> {
     if metadata.file_type().is_symlink()
-        || (if directory { !metadata.is_dir() } else { !metadata.is_file() })
+        || (if directory {
+            !metadata.is_dir()
+        } else {
+            !metadata.is_file()
+        })
         || metadata.uid() != nix::unistd::Uid::effective().as_raw()
         || metadata.mode() & 0o077 != 0
         || (!directory && metadata.nlink() != 1)
@@ -45,7 +49,10 @@ fn private(metadata: &fs::Metadata, directory: bool) -> Result<()> {
 }
 
 fn prepare(root: &Path, create: bool) -> Result<()> {
-    let parent = root.parent().filter(|parent| parent.is_absolute()).ok_or(Error::Unavailable)?;
+    let parent = root
+        .parent()
+        .filter(|parent| parent.is_absolute())
+        .ok_or(Error::Unavailable)?;
     if create {
         let mut builder = fs::DirBuilder::new();
         builder.mode(0o700);
@@ -99,7 +106,9 @@ pub(super) fn read(root: &Path, service: &str, account: &str) -> Result<Zeroizin
         .map_err(io)?;
     private(&file.metadata().map_err(io)?, false)?;
     let mut value = Zeroizing::new(Vec::with_capacity(metadata.len() as usize));
-    file.take(MAX_BYTES + 1).read_to_end(&mut value).map_err(io)?;
+    file.take(MAX_BYTES + 1)
+        .read_to_end(&mut value)
+        .map_err(io)?;
     if value.len() as u64 > MAX_BYTES {
         return Err(Error::Corrupt);
     }
@@ -136,7 +145,9 @@ pub(super) fn write(
     } else {
         temporary.persist(path).map_err(|error| io(error.error))?;
     }
-    File::open(root).and_then(|directory| directory.sync_all()).map_err(io)
+    File::open(root)
+        .and_then(|directory| directory.sync_all())
+        .map_err(io)
 }
 
 pub(super) fn remove(root: &Path, service: &str, account: &str) -> Result<()> {
@@ -144,5 +155,7 @@ pub(super) fn remove(root: &Path, service: &str, account: &str) -> Result<()> {
     let path = path(root, service, account);
     existing(&path)?.ok_or(Error::Absent)?;
     fs::remove_file(path).map_err(io)?;
-    File::open(root).and_then(|directory| directory.sync_all()).map_err(io)
+    File::open(root)
+        .and_then(|directory| directory.sync_all())
+        .map_err(io)
 }

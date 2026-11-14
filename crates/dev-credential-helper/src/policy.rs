@@ -159,9 +159,7 @@ mod tests {
             }))
         );
         assert!(matches!(
-            parse(&args(
-                "--item add one.clab.gram.identity.debug human"
-            )),
+            parse(&args("--item add one.clab.gram.identity.debug human")),
             Ok(Command::Item(Request {
                 authorize: false,
                 operation: Operation::Add,
@@ -217,11 +215,7 @@ mod tests {
             ),
             (Replace, "one.clab.gram.jev-key.debug", "typesafe"),
             (Read, "one.clab.gram.jev-key-store.debug", "typesafe"),
-            (
-                Replace,
-                "one.clab.gram.claude-api-key.debug",
-                "anthropic",
-            ),
+            (Replace, "one.clab.gram.claude-api-key.debug", "anthropic"),
             (
                 Replace,
                 "one.clab.gram.external-app-pairing.v1",
@@ -261,28 +255,16 @@ mod tests {
             (Read, "one.clab.gram.agents", "secrets"),
             (Read, "one.clab.gram.agents", "agent:"),
             // Release-build sessions and keys belong to the release app.
-            (
-                Read,
-                "one.clab.gram.federated-session",
-                hex.as_str(),
-            ),
+            (Read, "one.clab.gram.federated-session", hex.as_str()),
             (
                 Read,
                 "one.clab.gram.federated-session.debug",
                 upper.as_str(),
             ),
-            (
-                Read,
-                "one.clab.gram.federated-session.debug",
-                "human",
-            ),
+            (Read, "one.clab.gram.federated-session.debug", "human"),
             (Read, "one.clab.gram.jev-key", "typesafe"),
             (Read, "one.clab.gram.claude-api-key", "anthropic"),
-            (
-                Read,
-                "one.clab.gram.claude-api-key.debug",
-                "openai",
-            ),
+            (Read, "one.clab.gram.claude-api-key.debug", "openai"),
             // Old Buzz and anything else.
             (Read, "buzz-desktop", "secrets"),
             (Read, "app.buzz.onedotzero", "identity"),

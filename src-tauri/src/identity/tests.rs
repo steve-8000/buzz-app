@@ -385,7 +385,6 @@ fn uppercase_import_keeps_the_exact_key_and_mixed_case_is_rejected() {
     assert_eq!(identity(&store).export().unwrap(), nsec);
 }
 
-
 #[test]
 fn sidebar_registers_bind_legacy_projection_and_preserve_tombstones() {
     use serde_json::json;

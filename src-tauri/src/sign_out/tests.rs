@@ -1662,7 +1662,6 @@ fn a_linked_legacy_folder_moves_as_the_link() {
     unchanged(&outside, &["localstorage"]);
 }
 
-
 /// Development seed bases under `root`, app data last, with the installed
 /// app's folders under `source`.
 fn installed(root: &Path, source: &str) -> Vec<PathBuf> {
@@ -1730,7 +1729,6 @@ fn an_interrupted_development_seed_finishes_at_the_next_launch() {
     assert!(!seeds[1].join(DEV).join("stale").exists());
     assert!(!seeds[1].join(format!("{DEV}.seeding")).exists());
 }
-
 
 #[test]
 fn development_builds_use_the_installed_agents_unless_legacy_storage_is_due() {
