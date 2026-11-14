@@ -131,7 +131,15 @@ export const bundledPlugins: readonly BundledPlugin[] = [
     enabledByDefault: false,
   },
   {
-    manifest: { ...pairingManifest, apiVersion: 1 },
+    manifest: {
+      ...pairingManifest,
+      apiVersion: 1,
+      // Its tag names the Builderlab plugin, which a build may not ship.
+      discovery: {
+        ...pairingManifest.discovery,
+        tags: nativeBuilderlab() ? pairingManifest.discovery.tags : [],
+      },
+    },
     module: pairing,
     enabledByDefault: true,
   },
