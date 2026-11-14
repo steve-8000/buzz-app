@@ -183,7 +183,6 @@ export class ItemPublisher implements Transcript {
     if (/conflict|already|in use|exists|duplicate|unconfirmed/i.test(reason)) {
       const head = await this.head(d);
       if (head) this.sent.set(seq, { id: head, rev: 0, at: Date.now() });
-      else if (!this.sent.has(seq)) return this.retry(seq, entry, reason);
     }
     this.retry(seq, entry, reason);
   }

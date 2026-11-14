@@ -66,7 +66,7 @@ export class OmpTranscriptBuilder {
   private last = 0;
   private run: RunItem | undefined;
   private text: TextItem | undefined;
-  private streamed = false;
+  private readonly streamed = new Set<TextItem["kind"]>();
   private todo: TodoItem | undefined;
   private compaction: CompactionItem | undefined;
   private retry: NoticeItem | undefined;
@@ -96,7 +96,7 @@ export class OmpTranscriptBuilder {
     if (this.run) this.endRun({ state: "done" });
     const seq = this.nextSeq();
     this.todo = undefined;
-    this.streamed = false;
+    this.streamed.clear();
     this.run = this.put({
       kind: "run",
       seq,
@@ -214,7 +214,7 @@ export class OmpTranscriptBuilder {
         return;
       case "message_start":
         this.closeText();
-        this.streamed = false;
+        this.streamed.clear();
         return;
       case "message_update":
         this.update(frame.assistantMessageEvent);
@@ -336,7 +336,7 @@ export class OmpTranscriptBuilder {
 
   private append(kind: TextItem["kind"], delta: string) {
     if (!delta) return;
-    this.streamed = true;
+    this.streamed.add(kind);
     if (this.text?.kind !== kind) this.closeText();
     this.text = this.text
       ? this.put({ ...this.text, text: this.text.text + delta }, true)
@@ -361,7 +361,7 @@ export class OmpTranscriptBuilder {
             text: full,
             streaming: true,
           });
-      this.streamed = true;
+      this.streamed.add(kind);
     }
     if (this.text?.kind === kind) this.closeText();
   }
@@ -393,10 +393,12 @@ export class OmpTranscriptBuilder {
     if (!isRecord(message)) return;
     if (message.role === "assistant") {
       this.closeText();
-      if (!this.streamed && Array.isArray(message.content))
+      if (Array.isArray(message.content))
         for (const part of message.content) {
           if (!isRecord(part)) continue;
           const reasoning = part.type === "thinking";
+          const kind = reasoning ? "reasoning" : "assistant";
+          if (this.streamed.has(kind)) continue;
           const text = reasoning
             ? (str(part.thinking) ?? str(part.text))
             : part.type === "text"
@@ -405,7 +407,7 @@ export class OmpTranscriptBuilder {
           if (text?.trim())
             this.put<TextItem>({
               ...this.stamp(),
-              kind: reasoning ? "reasoning" : "assistant",
+              kind,
               text: text.trim(),
               end: this.now(),
             });

@@ -4,7 +4,7 @@ import type { SessionItem } from "./item";
 
 export type LiveEntry = Readonly<{ author: string; item: SessionItem }>;
 
-/** A conversation keeps this many items; older finished ones go first. */
+/** A conversation keeps this many items; the oldest go first. */
 const KEEP = 1500;
 const TRIM_TO = 1200;
 
