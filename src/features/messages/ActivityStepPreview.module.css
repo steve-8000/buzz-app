@@ -8,6 +8,15 @@
   overflow: hidden;
   min-height: calc(var(--text-message) * var(--text-message--line-height));
 }
+/* The marks stand on the text's first line, centered on it, however many
+ * lines follow. */
+.lead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--text-message) * var(--text-message--line-height));
+}
 /* A step may run to three lines, such as a whole command, before it is cut. */
 .stepText {
   display: -webkit-box;
@@ -20,5 +29,8 @@
   line-clamp: 3;
 }
 :where(html[data-message-density="compact"]) .stepPreview {
+  min-height: calc(var(--text-caption) * var(--text-caption--line-height));
+}
+:where(html[data-message-density="compact"]) .lead {
   min-height: calc(var(--text-caption) * var(--text-caption--line-height));
 }
