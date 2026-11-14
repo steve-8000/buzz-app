@@ -85,7 +85,16 @@ export function buildFlow(
       );
     if (run?.reply && stamps.has(run.reply))
       stamps.set(run.reply, Math.max(stamps.get(run.reply) ?? 0, end + 1));
-    if (run) events.push({ stamp: run.at, order: run.seq, group, item: run });
+    // The header leads the run's first step, so a message sent between the
+    // two comes before both, and the header is never left alone above it.
+    const lead = steps[0];
+    if (run)
+      events.push({
+        stamp: lead ? lead.at : run.at,
+        order: (lead ? lead.seq : run.seq) - 0.5,
+        group,
+        item: run,
+      });
     for (const step of steps)
       events.push({ stamp: step.at, order: step.seq, group, item: step });
   }

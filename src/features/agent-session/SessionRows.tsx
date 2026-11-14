@@ -325,6 +325,16 @@ function detailView(
   }
 }
 
+const DOING: Readonly<Record<string, string>> = {
+  Run: "Running",
+  Read: "Reading",
+  Edit: "Editing",
+  Write: "Writing",
+  Search: "Searching",
+  "Web search": "Searching the web",
+  Fetch: "Fetching",
+};
+
 function ToolRow({ item }: { item: ToolItem }) {
   const view = detailView(item.detail, item.name);
   const elapsed = item.end ? duration(Math.max(0, item.end - item.at)) : "";
@@ -333,12 +343,11 @@ function ToolRow({ item }: { item: ToolItem }) {
       icon={view.icon}
       status={item.status}
       label={
-        <>
-          {item.status === "running" && (
-            <span className={activity.status}>Running </span>
-          )}
+        item.status === "running" ? (
+          <ShimmerText>{DOING[view.action] ?? view.action}</ShimmerText>
+        ) : (
           <span className={`text-body ${activity.subject}`}>{view.action}</span>
-        </>
+        )
       }
       subject={view.subject || item.intent}
       meta={
@@ -448,11 +457,11 @@ function CompactionRow({ item }: { item: CompactionItem }) {
   );
 }
 
-const APPROVAL_TITLE = {
+const APPROVAL_TITLE: Readonly<Record<string, string>> = {
   bash: "Run a command?",
   edit: "Edit a file?",
   write: "Write a file?",
-} as const;
+};
 const APPROVAL_STATE = {
   approved: "Approved",
   denied: "Denied",
@@ -487,13 +496,18 @@ function ApprovalRow({
     >
       <header className={`${activity.row} text-body`}>
         <ShieldIcon size={16} aria-hidden="true" />
-        <span className={styles.cardTitle}>{APPROVAL_TITLE[item.tool]}</span>
+        <span className={styles.cardTitle}>
+          {APPROVAL_TITLE[item.tool] ?? `Allow ${item.tool}?`}
+        </span>
         {!pending && (
           <span className="text-secondary">
             {APPROVAL_STATE[item.state as keyof typeof APPROVAL_STATE]}
           </span>
         )}
       </header>
+      {item.detail.type !== "shell" && view.subject && (
+        <p className="text-body">{view.subject}</p>
+      )}
       {view.body}
       {answerable && controls ? (
         <div className={styles.actions}>

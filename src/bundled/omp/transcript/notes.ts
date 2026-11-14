@@ -12,7 +12,7 @@ export const DENY = "Deny";
 const TITLE_PREFIX = "Allow tool: ";
 
 export type Approval = Readonly<{
-  tool: "bash" | "edit" | "write";
+  tool: string;
   detail: ToolDetail;
   description: string;
 }>;
@@ -40,47 +40,61 @@ export function approvalOf(request: UiRequest): Approval | undefined {
   const tool = first.slice(TITLE_PREFIX.length).trim();
   const body = split < 0 ? "" : title.slice(split).replace(/^\r?\n/, "");
   const lines = body.split(/\r?\n/);
-  if (tool === "bash") {
-    const command = /(?:^|\r?\n)[\t ]*Command:[\t ]?(.*)$/s.exec(body)?.[1];
-    return command
-      ? {
-          tool,
-          detail: { type: "shell", command },
-          description: `Command: ${command}`,
-        }
-      : undefined;
-  }
-  if (tool === "edit") {
-    const filePath = lines
-      .map((line) => stripped(line, "File:")?.trim())
-      .find(Boolean);
-    return filePath
-      ? {
-          tool,
-          detail: { type: "edit", filePath },
-          description: `File: ${filePath}`,
-        }
-      : undefined;
-  }
-  if (tool === "write") {
-    const at = lines.findIndex((line) => line.trim().startsWith("Path:"));
-    const filePath = stripped(lines[at], "Path:")?.trim();
-    const content = lines.findIndex(
-      (line, index) => index > at && line.trim() === "Content:",
-    );
-    return at >= 0 && filePath && content >= 0
-      ? {
-          tool,
-          detail: {
-            type: "write",
-            filePath,
-            content: lines.slice(content + 1).join("\n"),
-          },
-          description: `Path: ${filePath}`,
-        }
-      : undefined;
-  }
-  return undefined;
+  if (!tool) return undefined;
+  const specific = (():
+    | Pick<Approval, "detail" | "description">
+    | undefined => {
+    if (tool === "bash") {
+      const command = /(?:^|\r?\n)[\t ]*Command:[\t ]?(.*)$/s.exec(body)?.[1];
+      return command
+        ? {
+            detail: { type: "shell", command },
+            description: `Command: ${command}`,
+          }
+        : undefined;
+    }
+    if (tool === "edit") {
+      const filePath = lines
+        .map((line) => stripped(line, "File:")?.trim())
+        .find(Boolean);
+      return filePath
+        ? {
+            detail: { type: "edit", filePath },
+            description: `File: ${filePath}`,
+          }
+        : undefined;
+    }
+    if (tool === "write") {
+      const at = lines.findIndex((line) => line.trim().startsWith("Path:"));
+      const filePath = stripped(lines[at], "Path:")?.trim();
+      const content = lines.findIndex(
+        (line, index) => index > at && line.trim() === "Content:",
+      );
+      return at >= 0 && filePath && content >= 0
+        ? {
+            detail: {
+              type: "write",
+              filePath,
+              content: lines.slice(content + 1).join("\n"),
+            },
+            description: `Path: ${filePath}`,
+          }
+        : undefined;
+    }
+    return undefined;
+  })();
+  // Any other tool asks the same way, with its own lines under the header.
+  return {
+    tool,
+    ...(specific ?? {
+      detail: {
+        type: "plain_text",
+        label: tool,
+        text: body.trim() || undefined,
+      },
+      description: lines.find((line) => line.trim())?.trim() ?? tool,
+    }),
+  };
 }
 
 function entriesOf(tasks: unknown): TodoEntry[] {

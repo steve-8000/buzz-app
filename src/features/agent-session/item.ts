@@ -105,7 +105,8 @@ export type ApprovalItem = Base &
     kind: "approval";
     request: string;
     state: ApprovalState;
-    tool: "bash" | "edit" | "write";
+    /** The tool that asks to run. */
+    tool: string;
     detail: ToolDetail;
     description?: string | undefined;
     /** The message that asks the same question in the conversation. */

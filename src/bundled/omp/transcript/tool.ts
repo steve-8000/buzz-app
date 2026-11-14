@@ -97,7 +97,10 @@ export function failureMessage(result: ToolResult): string {
     ?.trim();
   if (line) return line.slice(0, 240);
   if (isRecord(result)) {
-    const code = num(result.exitCode) ?? num(result.code);
+    const code =
+      num(result.exitCode) ??
+      num(result.code) ??
+      num(detailsOf(result)?.exitCode);
     if (code !== undefined) return `Tool exited with code ${code}`;
   }
   return "Tool call failed";
@@ -153,7 +156,10 @@ function patchPath(args: unknown): string | undefined {
 function shell(args: Record<string, unknown>, result: ToolResult): ToolDetail {
   const command = typeof args.command === "string" ? args.command : "";
   const code = isRecord(result)
-    ? (num(result.exitCode) ?? num(result.code) ?? null)
+    ? (num(result.exitCode) ??
+      num(result.code) ??
+      num(detailsOf(result)?.exitCode) ??
+      null)
     : null;
   return { type: "shell", command, output: textOf(result), exitCode: code };
 }

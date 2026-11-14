@@ -11,7 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { logLinkFor } from "../omp/log";
+import { sessionLinkFor } from "../omp/session-link";
 import { Avatar } from "../../shared/design-system/ui/Avatar";
 import { AvatarStack } from "../../shared/design-system/ui/AvatarStack";
 import type { ComposerAccessoryProps } from "../../features/conversation/contracts";
@@ -613,15 +613,15 @@ function ActivityBubble({
   };
   const requestRoot =
     props.message?.threadRootId ?? props.message?.id ?? props.threadRootId;
-  const logLink = (agent: string) =>
-    logLinkFor(agent, props.channelId, requestRoot);
+  const sessionLink = (agent: string) =>
+    sessionLinkFor(agent, props.channelId, requestRoot);
   const canOpenActivity = (agent: string) => {
-    const target = logLink(agent) ?? profileActivityViewTarget(agent);
+    const target = sessionLink(agent) ?? profileActivityViewTarget(agent);
     return !!target && props.canOpen(target);
   };
   const openActivity = (agent: string) => {
-    const log = logLink(agent);
-    if (log) return props.canOpen(log) && props.open(log);
+    const session = sessionLink(agent);
+    if (session) return props.canOpen(session) && props.open(session);
     const target = profileActivityViewTarget(agent);
     return (
       !!target &&
@@ -643,8 +643,8 @@ function ActivityBubble({
   const details = (
     <div ref={restoreFocusOnRemoval} className={styles.previews}>
       {entries.map((entry) => {
-        // Opens the agent's activity: the live log of an omp session, or the
-        // agent's Activity on its profile.
+        // Opens the agent's activity: the session of an omp agent kept on this
+        // computer, or the agent's Activity on its profile.
         const preview = entry.working
           ? currentActivity(entry.records, entry.turns)
           : undefined;

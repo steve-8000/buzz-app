@@ -18,7 +18,10 @@ import { sessionTranscripts } from "../../features/agent-session/transcripts";
 import type { PluginModule } from "../../plugins/api";
 import { type Config, config, DEFAULT_CONFIG } from "./config";
 import { AskButtons } from "./AskButtons";
+import { OpenThread } from "./auto-open";
 import { OmpSettings } from "./OmpSettings";
+import { sessionPanel } from "./SessionPanel";
+import { parseSessionTarget } from "./session-link";
 import { OmpRuntime } from "./runtime";
 import type { UiAnswer } from "./rpc";
 import { APPROVE, DENY } from "./transcript/notes";
@@ -43,6 +46,8 @@ export const inject = [
   "agents",
   "host",
   "conversation",
+  "panels",
+  "relay",
   "artifactStorage",
   "communityReader",
 ];
@@ -67,24 +72,39 @@ export const apply: PluginModule["apply"] = (ctx) => {
     placement: "message",
     component: AskButtons,
   });
+  ctx.conversation.registerAccessory({
+    id: "omp-open-thread",
+    title: "omp session thread",
+    placement: "message",
+    component: OpenThread,
+  });
   const collection = openSessionCollection(ctx);
+  // A conversation that is not a thread has no root; the views say so with "".
   const controls: SessionControls = {
     canAnswer: (channel, root, author, item) =>
-      !!runtime.pending(channel, root, author, item.request),
+      !!runtime.pending(channel, root || undefined, author, item.request),
     answer: (channel, root, author, item, answer) => {
       runtime.answer(
         channel,
-        root,
+        root || undefined,
         author,
         item.request,
         uiAnswer(item, answer),
       );
     },
   };
+  const source = { collection, live };
   ctx.conversation.registerThreadFlow({
     id: "omp-session",
     title: "omp sessions",
-    component: sessionFlow({ collection, live }, controls),
+    component: sessionFlow(source, controls),
+  });
+  ctx.panels.register({
+    id: "session",
+    title: "omp session",
+    matches: (url) => !!parseSessionTarget(url),
+    keepOpen: true,
+    component: sessionPanel(source, controls, ctx.relay),
   });
   agents.register<Config>({
     id: TYPE_ID,

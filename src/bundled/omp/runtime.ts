@@ -38,6 +38,8 @@ import {
   type UiAnswer,
   type UiRequest,
 } from "./rpc";
+import { requestThread } from "./auto-open";
+import { noteSession, sessionKey } from "./session-link";
 import { OmpTranscriptBuilder, type Outcome } from "./transcript/builder";
 import { APPROVE, approvalOf } from "./transcript/notes";
 import { targetOf } from "./transcript/target";
@@ -194,6 +196,13 @@ export class OmpRuntime {
       };
       this.sessions.set(id, session);
     }
+    noteSession(
+      sessionKey(
+        delivery.agent.pubkey,
+        conversation.channel,
+        conversation.root,
+      ),
+    );
     session.config = cfg;
     session.conversation = conversation;
     clearTimeout(session.idle);
@@ -356,6 +365,12 @@ export class OmpRuntime {
           ? delivery.trigger.event.id
           : undefined,
       );
+      if (
+        delivery.trigger.type === "mention" &&
+        !delivery.trigger.resumed &&
+        session.conversation.root
+      )
+        requestThread(delivery.trigger.event.id);
       try {
         const text = slim(prompt.text);
         await rpc.prompt(system ? `${system}\n\n${text}` : text);
@@ -599,7 +614,7 @@ export class OmpRuntime {
             tool,
             tool === "wait"
               ? (session.builder.waiting() ?? "a reply or a background job")
-              : targetOf(frame.args),
+              : targetOf(frame.args, frame.intent),
           );
         }
         this.collect(session, frame);

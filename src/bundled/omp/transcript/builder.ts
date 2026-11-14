@@ -429,7 +429,8 @@ export class OmpTranscriptBuilder {
     if (!call || this.tools.has(call)) return;
     const name = str(frame.toolName) ?? "tool";
     this.closeText();
-    const intent = intentOf(frame.args);
+    const said = str(frame.intent)?.trim();
+    const intent = said ? squash(said) : intentOf(frame.args);
     const command =
       isRecord(frame.args) && typeof frame.args.command === "string"
         ? frame.args.command

@@ -125,7 +125,7 @@ function shaped(item: Record<string, unknown>): boolean {
       return (
         isString(item.request) &&
         oneOf(item.state, ["pending", "approved", "denied", "expired"]) &&
-        oneOf(item.tool, ["bash", "edit", "write"]) &&
+        isString(item.tool) &&
         isRecord(item.detail) &&
         isString(item.detail.type)
       );

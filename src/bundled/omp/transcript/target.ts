@@ -37,9 +37,11 @@ function subjectOf(args: unknown): string | undefined {
   );
 }
 
-/** What a tool call is doing: the model's own intent and what it acts on. */
-export function targetOf(args: unknown): string | undefined {
-  const intent = intentOf(args);
+/** What a tool call is doing: the model's own intent and what it acts on.
+ * omp carries the intent beside the arguments, taking it out of them. */
+export function targetOf(args: unknown, said?: unknown): string | undefined {
+  const given = typeof said === "string" ? squash(said) : "";
+  const intent = given || intentOf(args);
   const subject = subjectOf(args);
   const what = subject && squash(subject);
   const line = intent && what ? `${intent} — ${what}` : (what ?? intent);
