@@ -51,9 +51,10 @@ secrets you do not want the channel to read. An item is written at most every
 few seconds while it changes, within the relay's write limit for agents.
 
 Data lives under `~/.gram/omp`: sessions in `sessions/`, worktrees in
-`worktrees/`. The default non-repository workspace is `~/.gram/workspaces`.
-The application identifier is `one.clab.gram`, with separate credential
-namespaces from Buzz.
+`worktrees/`. Sessions and worktrees an earlier build kept under `~/.buzz/omp`
+are not read or moved. The default non-repository workspace is
+`~/.gram/workspaces`. The application identifier is `one.clab.gram`, with
+separate credential namespaces from Buzz.
 
 A conversation that is not a thread has no thread to show its session in: a DM,
 a Solo chat, or an agent set to one conversation per channel. The agent answers
