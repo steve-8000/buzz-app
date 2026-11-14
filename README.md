@@ -60,6 +60,19 @@ A conversation that is not a thread has no thread to show its session in: a DM,
 a Solo chat, or an agent set to one conversation per channel. The agent answers
 there as before.
 
+The activity bubble under a request opens the session in a side panel, with each
+run's prompt and, from two runs on, an outline rail to jump between them. For a
+conversation that is not a thread the panel is the only place to read the
+session, and it shows only what this computer ran.
+
+How a session reads is a per-device choice, as in Paseo, under **Settings** →
+**Appearance** → **Agent sessions**. *Always expand reasoning* shows thinking
+open instead of as one line. *Chat display* is Full; Collapse tool calls, which
+folds a run of tool calls into one line such as "Edited 2 files and ran 3
+commands"; or Collapse turns, which folds a finished run into one line under its
+request (a run that failed, stopped or never answered stays open, and so does
+the one still working). *Chat outline* turns the rail on or off.
+
 ## Build
 
 Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),

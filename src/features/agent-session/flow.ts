@@ -14,6 +14,12 @@ export type Segment = {
   readonly type: "segment";
   readonly key: string;
   readonly author: string;
+  /** Every stretch of one run shares this key. */
+  readonly runKey: string;
+  /** How the run stands, which only its first stretch carries as `run`. */
+  readonly runState: RunItem["state"] | undefined;
+  /** The run posted a message as its answer. */
+  readonly answered: boolean;
   /** The run's own item, in the first stretch of the run. */
   run: RunItem | undefined;
   readonly items: SessionItem[];
@@ -124,6 +130,9 @@ export function buildFlow(
         type: "segment",
         key: `${event.group.key}:${event.item.seq}`,
         author: event.group.author,
+        runKey: event.group.key,
+        runState: event.group.run?.state,
+        answered: Boolean(event.group.run?.reply),
         run: undefined,
         items: [],
       };

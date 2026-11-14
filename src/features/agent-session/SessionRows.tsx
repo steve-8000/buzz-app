@@ -3,6 +3,8 @@
 import {
   type ReactNode,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -17,6 +19,7 @@ import {
   EyeIcon,
   FileTextIcon,
   GlobeIcon,
+  ListBulletsIcon,
   ListChecksIcon,
   MagnifyingGlassIcon,
   PencilSimpleIcon,
@@ -38,6 +41,7 @@ import { formatPublicKey } from "../../shared/identity/public-key";
 import { useProfileGeneration } from "../relay/react";
 import type { RelaySession } from "../relay/session";
 import type { SessionAnswer, SessionControls } from "./controls";
+import type { SessionDisplay } from "./display-preference";
 import type {
   ApprovalItem,
   CompactionItem,
@@ -50,6 +54,8 @@ import type {
   ToolDetail,
   ToolItem,
 } from "./item";
+import { isOpen } from "./item";
+import { type Row, summaryLabel } from "./present";
 import styles from "./SessionThread.module.css";
 
 export type RowContext = Readonly<{
@@ -59,6 +65,7 @@ export type RowContext = Readonly<{
   /** Who wrote the item: only the agent itself can have a question to answer. */
   author: string;
   controls?: SessionControls | undefined;
+  display: SessionDisplay;
 }>;
 
 const none = () => undefined;
@@ -367,7 +374,7 @@ function ToolRow({ item }: { item: ToolItem }) {
   );
 }
 
-function TextRow({ item }: { item: TextItem }) {
+function TextRow({ item, open }: { item: TextItem; open: boolean }) {
   if (item.kind === "assistant")
     return (
       <div className={styles.assistant}>
@@ -386,6 +393,7 @@ function TextRow({ item }: { item: TextItem }) {
     .trimStart();
   return (
     <Step
+      open={open}
       icon={<BulbIcon size={16} aria-label="Thought" />}
       label={
         item.streaming ? (
@@ -734,7 +742,7 @@ export function ItemRow({
   switch (item.kind) {
     case "assistant":
     case "reasoning":
-      return <TextRow item={item} />;
+      return <TextRow item={item} open={context.display.autoExpandReasoning} />;
     case "tool":
       return <ToolRow item={item} />;
     case "approval":
@@ -750,4 +758,56 @@ export function ItemRow({
     case "run":
       return null;
   }
+}
+
+/** Several steps behind one line that says what they did, open to the steps. */
+function Overview({
+  row,
+  context,
+}: {
+  row: Extract<Row, { type: "group" | "turn" }>;
+  context: RowContext;
+}) {
+  const running = row.items.some(isOpen);
+  const label =
+    summaryLabel(row.summary) ||
+    (row.type === "turn" ? "View turn details" : "Work");
+  const body = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the steps are the change to follow.
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (element && running) element.scrollTop = element.scrollHeight;
+  }, [row.items, running]);
+  const Icon = row.type === "turn" ? ListBulletsIcon : WrenchIcon;
+  return (
+    <Step
+      icon={<Icon size={16} aria-hidden="true" />}
+      label={
+        running ? (
+          <ShimmerText>{label}</ShimmerText>
+        ) : (
+          <span className={`text-body ${activity.subject}`}>{label}</span>
+        )
+      }
+    >
+      <div
+        ref={body}
+        className={row.type === "group" ? styles.nested : styles.opened}
+      >
+        {row.items.map((item) => (
+          <div key={item.seq} className={activity.item} data-type={item.kind}>
+            <ItemRow item={item} context={context} />
+          </div>
+        ))}
+      </div>
+    </Step>
+  );
+}
+
+export function RowView({ row, context }: { row: Row; context: RowContext }) {
+  return row.type === "item" ? (
+    <ItemRow item={row.item} context={context} />
+  ) : (
+    <Overview row={row} context={context} />
+  );
 }

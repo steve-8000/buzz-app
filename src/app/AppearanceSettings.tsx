@@ -47,6 +47,12 @@ import {
   setNamePreference,
   useNamePreference,
 } from "../features/profiles/name-preference";
+import {
+  CHAT_DISPLAYS,
+  setSessionDisplay,
+  useSessionDisplay,
+  useSessionDisplayUnsaved,
+} from "../features/agent-session/display-preference";
 import type { Communities } from "../features/communities/service";
 
 const noRelay = () => () => {};
@@ -83,6 +89,8 @@ export function AppearanceSettings({
   const names = useNamePreference();
   const verifiedCommunity = useVerifiedCommunity(communities?.relay);
   const { placement, unsaved } = useThreadPlacementPreference();
+  const agentDisplay = useSessionDisplay();
+  const agentDisplayUnsaved = useSessionDisplayUnsaved();
   const increaseButton = useRef<HTMLButtonElement>(null);
   const pendingFocus = useRef<HTMLButtonElement | null>(null);
   const resetRef = useCallback((node: HTMLButtonElement | null) => {
@@ -619,6 +627,71 @@ export function AppearanceSettings({
               onClick={() => appearance.setMode(preference)}
             >
               Retry saving appearance
+            </Button>
+          </ToastNotice>
+        )}
+      </div>
+      <div className="mt-section-gap">
+        <InlineHeader title="Agent sessions" />
+        <SettingsGroup>
+          <SwitchPreferenceRow
+            label="Always expand reasoning"
+            description="Show agent thinking and chain-of-thought blocks fully expanded by default."
+            checked={agentDisplay.autoExpandReasoning}
+            onCheckedChange={(autoExpandReasoning) =>
+              setSessionDisplay({ autoExpandReasoning })
+            }
+          />
+          <PreferenceRow
+            title="Chat display"
+            subtitle="How much of an agent’s work a session shows between a prompt and its reply."
+            trailing={
+              <Select
+                variant="compact"
+                label="Chat display"
+                value={agentDisplay.chatDisplay}
+                groups={[
+                  {
+                    label: "Chat display",
+                    options: [
+                      { value: "full", label: "Full" },
+                      {
+                        value: "collapseToolCalls",
+                        label: "Collapse tool calls",
+                      },
+                      { value: "collapseTurns", label: "Collapse turns" },
+                    ],
+                  },
+                ]}
+                onValueChange={(value) => {
+                  const chatDisplay = CHAT_DISPLAYS.find(
+                    (choice) => choice === value,
+                  );
+                  if (chatDisplay) setSessionDisplay({ chatDisplay });
+                }}
+              />
+            }
+          />
+          <SwitchPreferenceRow
+            label="Chat outline"
+            description="Show an outline for jumping between prompts in an agent’s session panel."
+            checked={agentDisplay.chatOutline}
+            onCheckedChange={(chatOutline) =>
+              setSessionDisplay({ chatOutline })
+            }
+          />
+        </SettingsGroup>
+        {active && agentDisplayUnsaved && (
+          <ToastNotice
+            title="Session display wasn’t saved"
+            description="This choice is active, but could not be saved on this device. Try again."
+          >
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setSessionDisplay({})}
+            >
+              Retry saving session display
             </Button>
           </ToastNotice>
         )}

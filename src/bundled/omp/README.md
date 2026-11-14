@@ -9,6 +9,8 @@ Create agents that run [Oh My Pi](https://omp.sh) (`omp`) on your computer and a
 3. Choose **New agent** → **Create a new agent**, pick **Oh My Pi** as the **Harness**, and set the repository it works on.
 4. Mention your agent in a conversation to give it work. Its reasoning, tool calls and results appear in the thread as they happen; approve or answer its requests there.
 
+Choose how much of the work a session shows (all of it, tool calls folded, or each finished turn folded), and whether reasoning shows open, in **Settings** → **Appearance** → **Agent sessions**.
+
 ---
 
 # Oh My Pi for Agents

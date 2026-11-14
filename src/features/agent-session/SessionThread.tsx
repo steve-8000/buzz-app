@@ -5,8 +5,10 @@ import activity from "../agents/ActivityTranscript.module.css";
 import type { ThreadFlowProps } from "../conversation/contracts";
 import type { RelaySession } from "../relay/session";
 import type { SessionControls } from "./controls";
-import { buildFlow, type Segment } from "./flow";
-import { ItemRow, RunHeader } from "./SessionRows";
+import { type SessionDisplay, useSessionDisplay } from "./display-preference";
+import { buildFlow } from "./flow";
+import { type PresentedSegment, present } from "./present";
+import { RowView, RunHeader } from "./SessionRows";
 import styles from "./SessionThread.module.css";
 import { type SessionSource, useSessionEntries } from "./use-entries";
 
@@ -17,32 +19,37 @@ export function SegmentView({
   channel,
   root,
   controls,
+  display,
 }: {
-  node: Segment;
+  node: PresentedSegment;
   session: RelaySession;
   channel: string;
   root: string;
   controls: SessionControls;
+  display: SessionDisplay;
 }) {
+  const context = {
+    session,
+    channel,
+    root,
+    author: node.author,
+    controls,
+    display,
+  };
   return (
     <>
       {node.run && (
         <RunHeader run={node.run} author={node.author} session={session} />
       )}
-      {node.items.length > 0 && (
+      {node.rows.length > 0 && (
         <div className={styles.steps}>
-          {node.items.map((item) => (
-            <div key={item.seq} className={activity.item} data-type={item.kind}>
-              <ItemRow
-                item={item}
-                context={{
-                  session,
-                  channel,
-                  root,
-                  author: node.author,
-                  controls,
-                }}
-              />
+          {node.rows.map((row) => (
+            <div
+              key={row.key}
+              className={activity.item}
+              data-type={row.type === "item" ? row.item.kind : row.type}
+            >
+              <RowView row={row} context={context} />
             </div>
           ))}
         </div>
@@ -64,6 +71,7 @@ export function sessionFlow(
     replies,
   }: ThreadFlowProps) {
     const entries = useSessionEntries(source, channelId, rootId);
+    const display = useSessionDisplay();
     const flow = useMemo(
       () =>
         buildFlow(
@@ -72,6 +80,10 @@ export function sessionFlow(
         ),
       [replies, entries],
     );
+    const nodes = useMemo(
+      () => present(flow.nodes, display),
+      [flow.nodes, display],
+    );
     if (!flow.nodes.some((node) => node.type === "segment"))
       return <>{replies.map((reply) => reply.row)}</>;
     const rows = new Map(
@@ -79,7 +91,7 @@ export function sessionFlow(
     );
     return (
       <>
-        {flow.nodes.map((node) =>
+        {nodes.map((node) =>
           node.type === "reply" ? (
             (rows.get(node.id) ?? null)
           ) : (
@@ -90,6 +102,7 @@ export function sessionFlow(
                 channel={channelId}
                 root={rootId}
                 controls={controls}
+                display={display}
               />
             </li>
           ),
