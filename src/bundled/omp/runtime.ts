@@ -42,7 +42,7 @@ import { requestThread } from "./auto-open";
 import { noteSession, sessionKey } from "./session-link";
 import { OmpTranscriptBuilder, type Outcome } from "./transcript/builder";
 import { APPROVE, approvalOf } from "./transcript/notes";
-import { targetOf } from "./transcript/target";
+import { clipTo, squash, targetOf } from "./transcript/target";
 import { type ExecResult, prepareWorktree, slug } from "./worktree";
 
 /** A conversation's omp process stops after this long without a turn. */
@@ -129,6 +129,11 @@ function wordsOf(delivery: Delivery<Config>) {
   return delivery.trigger.type === "mention"
     ? delivery.trigger.event.content
     : "";
+}
+
+/** What the owner asked, in one line, for the run's row. */
+function promptOf(delivery: Delivery<Config>) {
+  return clipTo(squash(wordsOf(delivery).replace(/nostr:\S+/g, "")), 200);
 }
 
 function outcomeOf(request: UiRequest, answer: UiAnswer): Outcome {
@@ -367,6 +372,7 @@ export class OmpRuntime {
         delivery.trigger.type === "mention"
           ? delivery.trigger.event.id
           : undefined,
+        promptOf(delivery) || undefined,
       );
       if (
         delivery.trigger.type === "mention" &&

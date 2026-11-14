@@ -9,6 +9,7 @@ import {
   SESSION_ITEM_TYPE,
   SESSION_ITEM_VERSION,
   type SessionItem,
+  type ToolDetail,
 } from "./item";
 import { redact } from "./redact";
 
@@ -96,53 +97,268 @@ export type Decoded = Readonly<{
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-const isNumber = (value: unknown) =>
-  typeof value === "number" && Number.isFinite(value);
-const isString = (value: unknown) => typeof value === "string";
-const oneOf = (value: unknown, allowed: readonly string[]) =>
-  typeof value === "string" && allowed.includes(value);
+const text = (value: unknown) =>
+  typeof value === "string" ? value : undefined;
+const count = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
+const oneOf = <T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): T | undefined => allowed.find((candidate) => candidate === value);
 
-/** Whether the fields a row reads are there; content is any member's to
- * write, so a row never trusts its shape. */
-function shaped(item: Record<string, unknown>): boolean {
-  if (![item.seq, item.rev, item.at, item.run].every(isNumber)) return false;
-  switch (item.kind) {
-    case "run":
-      return oneOf(item.state, ["running", "done", "failed", "stopped"]);
+/** A tool's detail, rebuilt field by field: any member can write its text. */
+function detailOf(value: unknown): ToolDetail | undefined {
+  if (!isRecord(value)) return undefined;
+  switch (value.type) {
+    case "shell":
+      return typeof value.command === "string"
+        ? {
+            type: "shell",
+            command: value.command,
+            output: text(value.output),
+            exitCode: value.exitCode === null ? null : count(value.exitCode),
+          }
+        : undefined;
+    case "read":
+      return typeof value.filePath === "string"
+        ? {
+            type: "read",
+            filePath: value.filePath,
+            content: text(value.content),
+            offset: count(value.offset),
+            limit: count(value.limit),
+          }
+        : undefined;
+    case "edit":
+      return typeof value.filePath === "string"
+        ? {
+            type: "edit",
+            filePath: value.filePath,
+            oldString: text(value.oldString),
+            newString: text(value.newString),
+            unifiedDiff: text(value.unifiedDiff),
+          }
+        : undefined;
+    case "write":
+      return typeof value.filePath === "string"
+        ? {
+            type: "write",
+            filePath: value.filePath,
+            content: text(value.content),
+          }
+        : undefined;
+    case "search":
+      return typeof value.query === "string"
+        ? {
+            type: "search",
+            query: value.query,
+            toolName: oneOf(value.toolName, [
+              "search",
+              "grep",
+              "glob",
+              "web_search",
+            ]),
+            content: text(value.content),
+          }
+        : undefined;
+    case "fetch":
+      return typeof value.url === "string"
+        ? { type: "fetch", url: value.url, result: text(value.result) }
+        : undefined;
+    case "sub_agent":
+      return {
+        type: "sub_agent",
+        subAgentType: text(value.subAgentType),
+        description: text(value.description),
+      };
+    case "plain_text":
+      return {
+        type: "plain_text",
+        label: text(value.label),
+        text: text(value.text),
+      };
+    case "unknown":
+      return {
+        type: "unknown",
+        input: text(value.input),
+        output: text(value.output),
+      };
+    default:
+      return undefined;
+  }
+}
+
+/** The item a record describes, rebuilt from the fields a row reads, or
+ * undefined when one it needs is missing. Content is any member's to write,
+ * so no row ever sees a value of the wrong type. */
+function sanitize(item: Record<string, unknown>): SessionItem | undefined {
+  const seq = count(item.seq);
+  const rev = count(item.rev);
+  const at = count(item.at);
+  const run = count(item.run);
+  if (
+    seq === undefined ||
+    rev === undefined ||
+    at === undefined ||
+    run === undefined
+  )
+    return undefined;
+  const base = { seq, rev, at, end: count(item.end), run };
+  const kind = item.kind;
+  switch (kind) {
+    case "run": {
+      const state = oneOf(item.state, ["running", "done", "failed", "stopped"]);
+      return state
+        ? {
+            kind,
+            ...base,
+            state,
+            trigger: text(item.trigger),
+            reply: text(item.reply),
+            error: text(item.error),
+            prompt: text(item.prompt),
+          }
+        : undefined;
+    }
     case "assistant":
     case "reasoning":
-    case "notice":
-      return isString(item.text);
-    case "tool":
-      return (
-        isString(item.call) &&
-        isString(item.name) &&
-        oneOf(item.status, ["running", "completed", "failed", "canceled"]) &&
-        isRecord(item.detail) &&
-        isString(item.detail.type)
-      );
-    case "approval":
-      return (
-        isString(item.request) &&
-        oneOf(item.state, ["pending", "approved", "denied", "expired"]) &&
-        isString(item.tool) &&
-        (item.grant === undefined || isString(item.grant)) &&
-        isRecord(item.detail) &&
-        isString(item.detail.type)
-      );
-    case "question":
-      return (
-        isString(item.request) &&
-        isString(item.title) &&
-        oneOf(item.state, ["pending", "answered", "cancelled", "expired"]) &&
-        oneOf(item.method, ["confirm", "select", "input", "editor"])
-      );
+      return typeof item.text === "string"
+        ? {
+            kind,
+            ...base,
+            text: item.text,
+            streaming: item.streaming === true ? true : undefined,
+          }
+        : undefined;
+    case "tool": {
+      const status = oneOf(item.status, [
+        "running",
+        "completed",
+        "failed",
+        "canceled",
+      ]);
+      const detail = detailOf(item.detail);
+      return typeof item.call === "string" &&
+        typeof item.name === "string" &&
+        status &&
+        detail
+        ? {
+            kind,
+            ...base,
+            call: item.call,
+            name: item.name,
+            status,
+            detail,
+            intent: text(item.intent),
+            error: text(item.error),
+          }
+        : undefined;
+    }
+    case "approval": {
+      const state = oneOf(item.state, [
+        "pending",
+        "approved",
+        "denied",
+        "expired",
+      ]);
+      const detail = detailOf(item.detail);
+      return typeof item.request === "string" &&
+        typeof item.tool === "string" &&
+        state &&
+        detail
+        ? {
+            kind,
+            ...base,
+            request: item.request,
+            state,
+            tool: item.tool,
+            detail,
+            grant: text(item.grant),
+            description: text(item.description),
+            message: text(item.message),
+          }
+        : undefined;
+    }
+    case "question": {
+      const state = oneOf(item.state, [
+        "pending",
+        "answered",
+        "cancelled",
+        "expired",
+      ]);
+      const method = oneOf(item.method, [
+        "confirm",
+        "select",
+        "input",
+        "editor",
+      ]);
+      return typeof item.request === "string" &&
+        typeof item.title === "string" &&
+        state &&
+        method
+        ? {
+            kind,
+            ...base,
+            request: item.request,
+            state,
+            method,
+            title: item.title,
+            text: text(item.text),
+            options:
+              Array.isArray(item.options) &&
+              item.options.every((option) => typeof option === "string")
+                ? (item.options as string[])
+                : undefined,
+            answer: text(item.answer),
+            message: text(item.message),
+          }
+        : undefined;
+    }
     case "todo":
-      return Array.isArray(item.entries);
-    case "compaction":
-      return oneOf(item.state, ["loading", "done"]);
+      return Array.isArray(item.entries)
+        ? {
+            kind,
+            ...base,
+            entries: item.entries.flatMap((entry: unknown) =>
+              isRecord(entry) && typeof entry.text === "string"
+                ? [
+                    {
+                      text: entry.text,
+                      status:
+                        oneOf(entry.status, [
+                          "pending",
+                          "in_progress",
+                          "completed",
+                        ]) ?? "pending",
+                    },
+                  ]
+                : [],
+            ),
+          }
+        : undefined;
+    case "notice":
+      return typeof item.text === "string"
+        ? {
+            kind,
+            ...base,
+            level: oneOf(item.level, ["info", "warning", "error"]) ?? "info",
+            text: item.text,
+          }
+        : undefined;
+    case "compaction": {
+      const state = oneOf(item.state, ["loading", "done"]);
+      return state
+        ? {
+            kind,
+            ...base,
+            state,
+            trigger: oneOf(item.trigger, ["auto", "manual"]) ?? "auto",
+            tokens: count(item.tokens),
+          }
+        : undefined;
+    }
     default:
-      return false;
+      return undefined;
   }
 }
 
@@ -156,10 +372,8 @@ export function decode(content: string): Decoded | undefined {
     return undefined;
   }
   if (!isRecord(value) || value.v !== SESSION_ITEM_VERSION) return undefined;
-  const { v: _version, root, ...item } = value;
-  if (!shaped(item)) return undefined;
-  return {
-    item: item as unknown as SessionItem,
-    root: typeof root === "string" ? root : undefined,
-  };
+  const { v: _version, root, ...fields } = value;
+  const item = sanitize(fields);
+  if (!item) return undefined;
+  return { item, root: typeof root === "string" ? root : undefined };
 }

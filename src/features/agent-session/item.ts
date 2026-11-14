@@ -82,6 +82,8 @@ export type RunItem = Base &
     /** The message that posted the run's answer. */
     reply?: string | undefined;
     error?: string | undefined;
+    /** What the owner asked, in a line, for a reader who cannot see the message. */
+    prompt?: string | undefined;
   }>;
 export type TextItem = Base &
   Readonly<{

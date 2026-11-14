@@ -92,7 +92,7 @@ export class OmpTranscriptBuilder {
   }
 
   /** A run begins; what follows belongs to it. */
-  beginRun(trigger?: string) {
+  beginRun(trigger?: string, prompt?: string) {
     if (this.run) this.endRun({ state: "done" });
     const seq = this.nextSeq();
     this.todo = undefined;
@@ -105,6 +105,7 @@ export class OmpTranscriptBuilder {
       at: this.now(),
       state: "running",
       trigger,
+      prompt,
     });
   }
 
