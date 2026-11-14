@@ -106,12 +106,25 @@ export type HarnessKit = Readonly<{
     options?: Readonly<{ read?(path: string): Promise<Uint8Array> }>,
   ): McpHandler;
   /** Posts `text` as the agent in the conversation: in the event's thread, or
-   * at the top level. `notifyOwner` tags the owner, as for a failed turn. */
+   * at the top level, and returns the new message's id. `notifyOwner` tags
+   * the owner, as for a failed turn; `tags` are added as they are, such as
+   * `imeta` for files uploaded as the agent. */
   reply(
     agent: AgentHandle,
     conversation: HarnessConversation,
     text: string,
-    options?: Readonly<{ notifyOwner?: boolean }>,
+    options?: Readonly<{
+      notifyOwner?: boolean;
+      tags?: readonly (readonly string[])[];
+    }>,
+  ): Promise<string>;
+  /** Replaces the text of the agent's own message `id` in the conversation's
+   * channel, as the Buzz `edit` tool does; its attachments are kept. */
+  revise(
+    agent: AgentHandle,
+    conversation: HarnessConversation,
+    id: string,
+    text: string,
   ): Promise<void>;
 }>;
 
@@ -461,7 +474,7 @@ export function harnessKit(sources: Sources): HarnessKit {
 
     async reply(agent, conversation, text, options = {}) {
       const { event } = known(conversation);
-      await agent.publish({
+      const posted = await agent.publish({
         kind: 9,
         content: text,
         tags: [
@@ -470,6 +483,27 @@ export function harnessKit(sources: Sources): HarnessKit {
             ? []
             : [["e", threadReference(event)?.rootId ?? event.id, "", "reply"]]),
           ...(options.notifyOwner ? [["p", agent.owner]] : []),
+          ...(options.tags ?? []),
+        ],
+      });
+      return posted.id;
+    },
+
+    async revise(agent, conversation, id, text) {
+      const head = await agent.effectiveEdit(id, conversation.channel);
+      const wait = (head.created_at + 1) * 1000 - Date.now();
+      if (wait > 5000)
+        throw new Error(
+          "The message was just changed; try again when the clock catches up.",
+        );
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      await agent.publish({
+        kind: 40003,
+        content: text,
+        tags: [
+          ["h", conversation.channel],
+          ["e", id],
+          ...head.tags.filter(([name]) => name === "imeta"),
         ],
       });
     },

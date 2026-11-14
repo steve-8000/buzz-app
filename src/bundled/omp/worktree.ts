@@ -60,10 +60,13 @@ export async function prepareWorktree(
   const listed = await exec(["worktree", "list", "--porcelain"], repo);
   const existing = worktreeOf(listed.out, branch);
   if (existing) return { path: existing, branch, repo };
-  const made = await exec(
-    ["worktree", "add", "-b", branch, path, options.base],
+  // Repositories differ in their default branch name; HEAD is always there.
+  const found = await exec(
+    ["rev-parse", "--verify", "--quiet", `${options.base}^{commit}`],
     repo,
   );
+  const base = found.code === 0 ? options.base : "HEAD";
+  const made = await exec(["worktree", "add", "-b", branch, path, base], repo);
   if (made.code === 0) return { path, branch, repo };
   if (!/already exists/.test(made.err)) throw failure("worktree add", made);
   const reused = await exec(["worktree", "add", path, branch], repo);

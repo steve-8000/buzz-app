@@ -81,12 +81,12 @@ pub(super) fn record() -> Arc<Session> {
 
 #[test]
 fn each_community_routes_by_host_to_its_own_server() {
-    let servers = config::compiled(
-        Some(r#"{"version":1,"id":"bb-acme","identityOrigin":"https://acme.builderlab.xyz","communityHosts":["buzz.acme.builderlab.xyz"],"adapterBase":"https://acme.builderlab.xyz/api/goose","apiBasePath":"/api/goose/"}"#),
-        None,
-        None,
-    )
-    .unwrap();
+    let descriptors = format!(
+        "[{},{}]",
+        r#"{"version":1,"id":"bb-acme","identityOrigin":"https://acme.builderlab.xyz","communityHosts":["buzz.acme.builderlab.xyz"],"adapterBase":"https://acme.builderlab.xyz/api/goose","apiBasePath":"/api/goose/"}"#,
+        config::BUILT_IN
+    );
+    let servers = config::compiled(Some(&descriptors)).unwrap();
     let server = |config: Config| {
         FederatedIdentity::with_store(
             Some(config),
@@ -190,13 +190,12 @@ pub(super) fn customers_listed_in(
 
 #[test]
 fn a_builderlab_customer_gets_its_own_server_unless_a_compiled_one_covers_it() {
-    let mut servers = config::compiled(
-        Some(r#"[{"version":1,"id":"bb-acme","identityOrigin":"https://acme.builderlab.xyz","communityHosts":["buzz.acme.builderlab.xyz"],"adapterBase":"https://acme.builderlab.xyz/api/goose","apiBasePath":"/api/goose/"},{"version":1,"id":"bb-taken","identityOrigin":"https://identity.example","communityHosts":["taken.example"],"adapterBase":"https://identity.example","apiBasePath":"/api/"}]"#),
-        None,
-        None,
-    )
-    .unwrap()
-    .into_iter();
+    let descriptors = format!(
+        "[{},{}]",
+        r#"{"version":1,"id":"bb-acme","identityOrigin":"https://acme.builderlab.xyz","communityHosts":["buzz.acme.builderlab.xyz"],"adapterBase":"https://acme.builderlab.xyz/api/goose","apiBasePath":"/api/goose/"},{"version":1,"id":"bb-taken","identityOrigin":"https://identity.example","communityHosts":["taken.example"],"adapterBase":"https://identity.example","apiBasePath":"/api/"}"#,
+        config::BUILT_IN
+    );
+    let mut servers = config::compiled(Some(&descriptors)).unwrap().into_iter();
     let first = servers.next().unwrap();
     let peers: Vec<_> = servers
         .map(|config| {
@@ -367,13 +366,12 @@ fn a_builderlab_customer_server_is_added_again_at_every_launch() {
 
 #[tokio::test]
 async fn signing_out_of_one_server_keeps_the_others_session() {
-    let mut configs = config::compiled(
-        Some(r#"{"version":1,"id":"bb-acme","identityOrigin":"https://acme.builderlab.xyz","communityHosts":["buzz.acme.builderlab.xyz"],"adapterBase":"https://acme.builderlab.xyz/api/goose","apiBasePath":"/api/goose/"}"#),
-        None,
-        None,
-    )
-    .unwrap()
-    .into_iter();
+    let descriptors = format!(
+        "[{},{}]",
+        r#"{"version":1,"id":"bb-acme","identityOrigin":"https://acme.builderlab.xyz","communityHosts":["buzz.acme.builderlab.xyz"],"adapterBase":"https://acme.builderlab.xyz/api/goose","apiBasePath":"/api/goose/"}"#,
+        config::BUILT_IN
+    );
+    let mut configs = config::compiled(Some(&descriptors)).unwrap().into_iter();
     let signed_in = |mut config: Config, peers| {
         // Sign-out revokes here, never at Builderlab.
         config.identity_origin = UNREACHABLE.into();

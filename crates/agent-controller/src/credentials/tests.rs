@@ -330,7 +330,7 @@ fn destination_is_separate_exact_bound_create_only_and_verified() {
     assert!(credentials.read(&id, PUB).is_err()); // denied != absent
     *fake.failure.lock().unwrap() = None;
     fake.put(
-        "xyz.block.buzz.desktop.agents",
+        "one.clab.gram.agents",
         &account,
         b"0000000000000000000000000000000000000000000000000000000000000002".to_vec(),
     );
@@ -382,25 +382,17 @@ fn adoption_uses_production_adapter_and_reads_back_create_only_destination() {
             ("legacy".into(), "buzz-desktop-dev".into(), "secrets".into()),
             (
                 "saved".into(),
-                "xyz.block.buzz.desktop.agents".into(),
+                "one.clab.gram.agents".into(),
                 account.clone()
             ),
             ("saved".into(), PREVIOUS_SERVICE.into(), account.clone()),
             (
                 "saved".into(),
-                "xyz.block.buzz.desktop.agents".into(),
+                "one.clab.gram.agents".into(),
                 account.clone()
             ),
-            (
-                "add".into(),
-                "xyz.block.buzz.desktop.agents".into(),
-                account.clone()
-            ),
-            (
-                "saved".into(),
-                "xyz.block.buzz.desktop.agents".into(),
-                account
-            ),
+            ("add".into(), "one.clab.gram.agents".into(), account.clone()),
+            ("saved".into(), "one.clab.gram.agents".into(), account),
         ]
     );
     let snapshot = store.list().unwrap();

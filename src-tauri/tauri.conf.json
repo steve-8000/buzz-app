@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Buzz",
+  "productName": "Gram",
   "version": "0.7.0",
-  "identifier": "xyz.block.buzz.desktop",
+  "identifier": "one.clab.gram",
   "build": {
     "beforeDevCommand": "pnpm dev:desktop --port 1430",
     "devUrl": "http://localhost:1430",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Buzz",
+        "title": "Gram",
         "dragDropEnabled": false,
         "width": 1200,
         "height": 800,

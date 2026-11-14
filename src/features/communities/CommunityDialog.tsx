@@ -508,7 +508,7 @@ export function CommunityDialog({
                     autoComplete="url"
                     autoCapitalize="none"
                     spellCheck={false}
-                    placeholder="wss://communities.buzz.xyz"
+                    placeholder="wss://relay.example.com"
                     maxLength={2048}
                     disabled={busy}
                     value={url}

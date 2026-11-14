@@ -187,11 +187,11 @@ fn read_saved(
     match read() {
         Ok(value) => Ok(Some(value)),
         Err(credentials::Error::Absent) => Ok(None),
-        Err(credentials::Error::Denied) => Err("Secure storage access was denied. Allow access and retry; nothing was changed.".into()),
+        Err(credentials::Error::Denied) => Err("Credential storage access was denied. Check permissions and retry; nothing was changed.".into()),
         Err(credentials::Error::Busy) => Err("Another Buzz app is accessing secure storage. Retry shortly.".into()),
         Err(credentials::Error::Corrupt) => Err(MALFORMED.into()),
         Err(credentials::Error::Ambiguous) => Err(AMBIGUOUS.into()),
-        Err(_) => Err("Your identity could not be accessed in secure storage. Unlock your credential store and retry without changing keys.".into()),
+        Err(_) => Err("Your identity could not be accessed in credential storage. Retry without changing keys.".into()),
     }
 }
 #[cfg(not(test))]
@@ -208,9 +208,9 @@ mod platform {
                 "An identity is already saved; nothing was overwritten. Restart to restore it."
             }
             credentials::Error::Denied => {
-                "Keychain access was denied. Allow access and retry; no identity was created."
+                "Local secret storage access was denied. Check its permissions and retry."
             }
-            _ => "Your identity could not be accessed in Keychain. Retry without changing keys.",
+            _ => "Your local identity could not be accessed. Retry without changing keys.",
         }
         .into()
     }
@@ -250,12 +250,10 @@ mod platform {
                 Err("Another Buzz app is accessing secure storage. Retry shortly.".into())
             }
             Err(credentials::Error::Denied) => Err(
-                "Keychain access was denied. Allow access and open Buzz again to finish signing out."
-                    .into(),
+                "Local secret storage access was denied. Check its permissions and retry.".into(),
             ),
             Err(_) => Err(
-                "Your identity could not be accessed in Keychain. Retry without changing keys."
-                    .into(),
+                "Your local identity could not be accessed. Retry without changing keys.".into(),
             ),
         }
     }

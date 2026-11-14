@@ -39,6 +39,8 @@ export type Hooks = Readonly<{
   event?(frame: Frame): void;
   /** The process ended, with its exit code. */
   exited?(code: number | null): void;
+  /** A run began, whoever asked for it: a prompt, or omp on its own. */
+  started?(): void;
 }>;
 
 const QUESTIONS: Record<string, UiRequest["method"]> = {
@@ -48,6 +50,9 @@ const QUESTIONS: Record<string, UiRequest["method"]> = {
   editor: "editor",
 };
 const RESPONSE_MS = 30_000;
+/** omp can begin the next run by itself right after one ends, as for a
+ * steering message that came last; a run is over once none follows this soon. */
+const SETTLE_MS = 800;
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -78,6 +83,11 @@ export class OmpRpc {
     resolve(end: RunEnd): void;
     reject(error: Error): void;
   }> = [];
+  /** The last assistant message omp finished, kept because a long run's
+   * `agent_end` is cut to fit the 1 MiB frame limit and may carry none. */
+  private streamed: RunEnd | undefined;
+  private running = false;
+  private settling: ReturnType<typeof setTimeout> | undefined;
   private readonly readied: Promise<void>;
   private ready!: () => void;
 
@@ -90,6 +100,7 @@ export class OmpRpc {
     });
     void pipe.exited.then((code) => {
       this.done = true;
+      clearTimeout(this.settling);
       const gone = new Error(`omp exited${code === null ? "" : ` (${code})`}`);
       for (const waiter of this.responses.values()) waiter.reject(gone);
       this.responses.clear();
@@ -157,8 +168,21 @@ export class OmpRpc {
     });
   }
 
-  prompt(message: string) {
-    return this.command({ type: "prompt", message });
+  /** An agent run is under way, or may be about to continue by itself. */
+  get streaming() {
+    return this.running;
+  }
+
+  /** Starts a run, or queues the message for the one under way: omp refuses
+   * a prompt while it is working, which a run that began by itself can make
+   * happen between two messages. */
+  async prompt(message: string) {
+    try {
+      await this.command({ type: "prompt", message });
+    } catch (error) {
+      if (!/already processing/i.test(String(error))) throw error;
+      await this.steer(message);
+    }
   }
 
   steer(message: string) {
@@ -198,15 +222,40 @@ export class OmpRpc {
       case "extension_ui_request":
         this.question(frame);
         return;
+      case "agent_start":
+        clearTimeout(this.settling);
+        this.settling = undefined;
+        this.running = true;
+        this.hooks.started?.();
+        this.hooks.event?.(frame);
+        return;
+      case "message_end":
+        this.streamed = assistantEnd(frame.message) ?? this.streamed;
+        this.hooks.event?.(frame);
+        return;
       case "agent_end": {
-        const end = runEnd(frame);
-        for (const waiter of this.ends.splice(0)) waiter.resolve(end);
+        // A retry or a reminder goes on by itself: the run has not finished.
+        const yielded =
+          typeof frame.yielded === "boolean"
+            ? frame.yielded
+            : frame.isTerminal !== false;
+        if (yielded) this.settle(this.streamed ?? runEnd(frame));
         this.hooks.event?.(frame);
         return;
       }
       default:
         this.hooks.event?.(frame);
     }
+  }
+
+  private settle(end: RunEnd) {
+    clearTimeout(this.settling);
+    this.settling = setTimeout(() => {
+      this.settling = undefined;
+      this.running = false;
+      this.streamed = undefined;
+      for (const waiter of this.ends.splice(0)) waiter.resolve(end);
+    }, SETTLE_MS);
   }
 
   private question(frame: Frame) {
@@ -255,30 +304,34 @@ export class OmpRpc {
   }
 }
 
+function assistantEnd(message: unknown): RunEnd | undefined {
+  if (!isRecord(message) || message.role !== "assistant") return undefined;
+  const parts = Array.isArray(message.content) ? message.content : [];
+  const text = parts
+    .map((part: unknown) =>
+      isRecord(part) && part.type === "text" && typeof part.text === "string"
+        ? part.text
+        : "",
+    )
+    .join("")
+    .trim();
+  if (message.stopReason === "error")
+    return {
+      text,
+      error:
+        typeof message.errorMessage === "string"
+          ? message.errorMessage
+          : "The run failed.",
+    };
+  return { text };
+}
+
 /** The last assistant text of a finished run, or its failure. */
 export function runEnd(frame: Frame): RunEnd {
   const messages = Array.isArray(frame.messages) ? frame.messages : [];
   for (let at = messages.length - 1; at >= 0; at--) {
-    const message: unknown = messages[at];
-    if (!isRecord(message) || message.role !== "assistant") continue;
-    const parts = Array.isArray(message.content) ? message.content : [];
-    const text = parts
-      .map((part: unknown) =>
-        isRecord(part) && part.type === "text" && typeof part.text === "string"
-          ? part.text
-          : "",
-      )
-      .join("")
-      .trim();
-    if (message.stopReason === "error")
-      return {
-        text,
-        error:
-          typeof message.errorMessage === "string"
-            ? message.errorMessage
-            : "The run failed.",
-      };
-    return { text };
+    const end = assistantEnd(messages[at]);
+    if (end) return end;
   }
   return { text: "" };
 }
@@ -287,6 +340,25 @@ const APPROVE =
   /^(y|yes|ok|okay|approve|approved|allow|go|proceed|승인|허용|예|네|응)$/i;
 const DENY =
   /^(n|no|deny|denied|reject|refuse|stop|cancel|거부|취소|아니|아니오|아뇨)$/i;
+/** A pick by number, with the owner's own words after it: `1`, `approve 1 …`,
+ * `1번으로 …`. */
+const LEADING_NUMBER =
+  /^(?:(?:approve|approved|ok|okay|yes|승인|허용)[\s,:]+)?(\d+)(?=$|[\s.,:)\-—번])/i;
+
+/** A reply without the mentions of the agent. */
+function plain(reply: string) {
+  return reply
+    .replace(/nostr:(npub|nprofile)1[a-z0-9]+/gi, " ")
+    .replace(/(^|\s)@\S+/g, " ")
+    .trim();
+}
+
+/** A reply that is only an answer word or a number. With no question
+ * waiting it was meant for one that is gone, so it is not a message to omp. */
+export function isAnswerWord(reply: string) {
+  const word = plain(reply).replace(/[.!]+$/, "");
+  return APPROVE.test(word) || DENY.test(word) || /^\d+$/.test(word);
+}
 
 /** What a person's reply to a question means, or undefined when it is not an
  * answer. Mentions of the agent are not part of the answer. */
@@ -294,10 +366,7 @@ export function answerTo(
   request: UiRequest,
   reply: string,
 ): UiAnswer | undefined {
-  const text = reply
-    .replace(/nostr:(npub|nprofile)1[a-z0-9]+/gi, " ")
-    .replace(/(^|\s)@\S+/g, " ")
-    .trim();
+  const text = plain(reply);
   if (!text) return undefined;
   const word = text.replace(/[.!]+$/, "");
   if (request.method === "confirm") {
@@ -308,9 +377,11 @@ export function answerTo(
   if (DENY.test(word)) return { cancelled: true };
   if (request.method === "select") {
     const options = request.options ?? [];
-    const number = /^\d+$/.test(word) ? Number(word) : 0;
-    const picked = options[number - 1];
-    if (picked !== undefined) return { value: picked };
+    const lead = LEADING_NUMBER.exec(text)?.[1];
+    if (lead !== undefined) {
+      const picked = options[Number(lead) - 1];
+      return picked === undefined ? undefined : { value: picked };
+    }
     const named = options.find(
       (option) => option.toLowerCase() === word.toLowerCase(),
     );

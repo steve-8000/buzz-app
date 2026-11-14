@@ -1058,6 +1058,10 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let manager =
             buzzodz_plugins::Manager::open(Some(temp.path().into()), "test", false).unwrap();
+        if !buzzodz_plugins::BUILDERLAB_API_BASE_PATH.ends_with("/api/goose/") {
+            assert!(manager.host_grants("block.builderlab", "bundled").is_err());
+            return;
+        }
         let grants = manager.host_grants("block.builderlab", "bundled").unwrap();
         // Builderlab is reached only through the native FI forwarder.
         assert!(!grants.files && grants.network_origins.is_empty());

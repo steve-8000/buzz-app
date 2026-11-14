@@ -11,6 +11,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { sessionLinkFor } from "../omp/session-link";
 import { Avatar } from "../../shared/design-system/ui/Avatar";
 import { AvatarStack } from "../../shared/design-system/ui/AvatarStack";
 import type { ComposerAccessoryProps } from "../../features/conversation/contracts";
@@ -610,6 +611,24 @@ function ActivityBubble({
       </Button>
     );
   };
+  const requestRoot =
+    props.message?.threadRootId ?? props.message?.id ?? props.threadRootId;
+  const sessionLink = (agent: string) =>
+    sessionLinkFor(agent, props.channelId, requestRoot);
+  const canOpenActivity = (agent: string) => {
+    const target = sessionLink(agent) ?? profileActivityViewTarget(agent);
+    return !!target && props.canOpen(target);
+  };
+  const openActivity = (agent: string) => {
+    const session = sessionLink(agent);
+    if (session) return props.canOpen(session) && props.open(session);
+    const target = profileActivityViewTarget(agent);
+    return (
+      !!target &&
+      props.canOpen(target) &&
+      openProfileTranscript(target, props.open)
+    );
+  };
   const activityLabel = `View agent activity: ${entries
     .map((entry) => {
       const control = controls.get(entry.agent);
@@ -624,8 +643,8 @@ function ActivityBubble({
   const details = (
     <div ref={restoreFocusOnRemoval} className={styles.previews}>
       {entries.map((entry) => {
-        // Opens the agent's Activity on this message's transcript.
-        const target = profileActivityViewTarget(entry.agent);
+        // Opens the agent's activity: the session of an omp agent kept on this
+        // computer, or the agent's Activity on its profile.
         const preview = entry.working
           ? currentActivity(entry.records, entry.turns)
           : undefined;
@@ -642,14 +661,9 @@ function ActivityBubble({
               <NavigationItem
                 variant="option"
                 aria-label={`View activity for ${entry.name}`}
-                disabled={!target || !props.canOpen(target)}
+                disabled={!canOpenActivity(entry.agent)}
                 onClick={() => {
-                  if (
-                    target &&
-                    props.canOpen(target) &&
-                    openProfileTranscript(target, props.open)
-                  )
-                    setExpanded(false);
+                  if (openActivity(entry.agent)) setExpanded(false);
                 }}
                 icon={
                   <ActivityAvatar
@@ -772,9 +786,7 @@ function ActivityBubble({
             }
             if (single) {
               event.preventBaseUIHandler();
-              const target = profileActivityViewTarget(single.agent);
-              if (target && props.canOpen(target))
-                openProfileTranscript(target, props.open);
+              openActivity(single.agent);
             }
           }}
           render={

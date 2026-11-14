@@ -1,161 +1,103 @@
-# Buzz
+# Gram
 
-Your people, your agents, your projects — all in one place. Buzz is a desktop
-app for team chat and AI agents: join a community, talk in channels and direct
-messages, and run agents such as Claude, Codex, Goose or Pi on your own
-computer that answer you right in the conversation.
+Gram is a desktop fork of [Buzz](https://github.com/block/buzz-app). An Oh My Pi
+(omp) agent in a thread shows its work there as a session: its text, tool
+calls, plans and questions, in order, readable by everyone in the conversation.
 
-![A Buzz chat with an agent replying](docs/assets/readme/solo-chat.png)
+## Self-hosted setup
 
-> [!IMPORTANT]
-> **Buzz 1.0 is in beta.** Buzz 0.X is still available and supported in
-> [block/buzz](https://github.com/block/buzz).
+Gram starts with a local identity and a community address supplied by the user.
+It does not configure the public Builderlab sign-in server or hosted
+communities by default. An operator can explicitly configure an identity
+server for a self-hosted deployment with `BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG`.
+The community Relay must be running separately.
 
-## Get started
+omp runs on this computer; the selected model provider may still send prompts
+to its own remote API.
 
-### 1. Download
+On macOS, Gram stores its own identities, agent keys and tokens in
+`~/.gram/secrets` as unencrypted local files, with a `0700` directory and `0600`
+files. Other processes running as the same user and backups of that directory
+can read them. Existing Gram Keychain items are not imported automatically.
+The explicit Buzz identity import reads the old Buzz Keychain without removing
+its original. omp manages its own provider authentication.
 
-Get the newest build from the [releases page](https://github.com/block/buzz-app/releases).
+## Agent sessions
 
-| Platform | Download | Notes |
-| --- | --- | --- |
-| macOS (Apple Silicon) | `Buzz_…_aarch64.dmg` | Signed and notarized. |
-| macOS (Intel) | `Buzz_…_x64.dmg` | Signed and notarized. |
-| Windows (x64) | `Buzz_…_x64_unsigned.exe` | Not code-signed, so Windows SmartScreen warns you before it runs. |
-| Linux (x64) | `Buzz_…_amd64.deb` or `Buzz_…_x86_64.AppImage` | Built on Ubuntu 24.04. |
+Create an agent with the **Oh My Pi** harness (plugin `buzz.omp`, type `omp`)
+and choose its model, repository folders and workspace. The `omp` executable
+must be installed and authenticated. Mention the agent in a channel and it
+answers in a thread; each thread is one omp session in its own git worktree.
 
-Once installed, Buzz updates itself. You can also check from
-**Settings → Software updates**.
+The agent drives omp in `--mode rpc-ui` on this computer. What it does is
+written to the conversation as items: one NIP-AR artifact (kind 45010, type
+`gram.session.item`) per step, rewritten as the step changes. The thread draws
+them between its messages, so every member who can read the thread follows the
+run, and the computer that runs the agent shows it without waiting for the
+relay. Only Gram draws these items; other Buzz clients show the thread's
+messages and ignore the artifacts.
 
-### 2. Set up your identity
+The request, the agent's final answer and its approval questions stay ordinary
+messages, so replies, mentions and the mobile buttons keep working. An approval
+or question also appears as a card in the thread; only the computer that runs
+the agent can answer it, and answering from the card or by message settles the
+same question.
 
-![The first-launch screen](docs/assets/readme/identity-setup.png)
+Items include tool input and output, file contents and diffs, and are readable
+by every member of the channel. Strings that look like credentials (API keys,
+tokens, private keys, `NAME_TOKEN=value` assignments) are masked and each item
+is cut to fit one event, but masking is a heuristic: do not point an agent at
+secrets you do not want the channel to read. An item is written at most every
+few seconds while it changes, within the relay's write limit for agents.
 
-Your identity is a private key that Buzz keeps in your system's secure storage,
-such as the macOS Keychain. On first launch, pick one:
+Data lives under `~/.gram/omp`: sessions in `sessions/`, worktrees in
+`worktrees/`. Sessions and worktrees an earlier build kept under `~/.buzz/omp`
+are not read or moved. The default non-repository workspace is
+`~/.gram/workspaces`. The application identifier is `one.clab.gram`, with
+separate credential namespaces from Buzz.
 
-- **Create a new identity** to start fresh.
-- **Continue with your Buzz identity** brings your identity over from Buzz 0.X
-  in one click, so you can rejoin your communities. It only appears if Buzz 0.X
-  is installed on this computer, and macOS may ask you to allow Keychain access.
-- **Use an existing key** to paste a private key (`nsec1…`), for example from
-  **Identity details** in Buzz 0.X on another computer.
+A conversation that is not a thread has no thread to show its session in: a DM,
+a Solo chat, or an agent set to one conversation per channel. The agent answers
+there as before.
 
-**Save a copy of your key now.** Buzz doesn't back it up for you. Open
-**Settings → Identity**, choose **Copy private key**, and store it somewhere
-safe, such as a password manager. Without it you can't get your identity back
-on another computer.
+The activity bubble under a request opens the session in a side panel, with each
+run's prompt and, from two runs on, an outline rail to jump between them. For a
+conversation that is not a thread the panel is the only place to read the
+session, and it shows only what this computer ran.
 
-### 3. Join a community
+How a session reads is a per-device choice, as in Paseo, under **Settings** →
+**Appearance** → **Agent sessions**. *Always expand reasoning* shows thinking
+open instead of as one line. *Chat display* is Full; Collapse tool calls, which
+folds a run of tool calls into one line such as "Edited 2 files and ran 3
+commands"; or Collapse turns, which folds a finished run into one line under its
+request (a run that failed, stopped or never answered stays open, and so does
+the one still working). *Chat outline* turns the rail on or off.
 
-Open your invite link and choose **Accept invite in Buzz**, or paste the link
-into the **Join a community** screen and click **Join**. If the link opens
-Buzz 0.X instead, paste it. Already a member from Buzz 0.X? Paste the
-community's address, such as `https://feedback.communities.buzz.xyz`. Add more
-communities later from the community button in the top-right corner →
-**Join a community**.
+## Build
 
-**No invite?** Paste the Buzz feedback community's invite,
-`https://feedback.communities.buzz.xyz/invite/v2.yC8ZZIz5vwWCZYo2RRheuY1a0IKZRTXvxTmK7vIFIIY`,
-create one with **Create a community** (or at [buzz.xyz](https://buzz.xyz)), or
-[run your own relay](https://github.com/block/buzz#i-want-my-own-hosted-relay)
-from block/buzz.
-
-![The Join a community screen](docs/assets/readme/join-community.png)
-
-### 4. Add your first agent
-
-Open **Agents** in the app dock and choose **Create your first agent** (or
-**New agent → Create a new agent**). Agents belong to a community, so add yours
-first. Give the agent a name, pick a **Harness**, and optionally choose a model
-and write instructions. Then click **Create agent**.
-
-![Creating an agent](docs/assets/readme/create-agent.png)
-
-| Harness | Platforms | What you need |
-| --- | --- | --- |
-| Claude | macOS, Linux | A Claude account. Click **Install integration** to download Buzz's own copy (about 250 MB), then **Sign in** in your browser. It shares settings with the `claude` in your terminal but doesn't change it. |
-| Codex | macOS, Linux | A ChatGPT or OpenAI account. Click **Install integration** (about 130 MB), then **Sign in** in your browser. |
-| Goose | macOS, Linux, Windows | Included with Buzz. Choose a model provider and enter its key in **Settings → Agent setup → Harness defaults → Goose**. Providers that sign in through goose instead need `goose configure` from the separate goose CLI. |
-| Pi | macOS, Linux, Windows | Node.js 22.19 or later. Turn on **Pi** in **Settings → Plugins** first. Click the model, choose a provider, paste its **API key**, and click **Save to Pi**. Providers that sign in another way need `pi`, then `/login`, in your terminal. |
-
-The install and sign-in buttons appear in the create dialog's **Model** row, and
-in **Settings → Agent setup → Harness defaults**. Agents run on your computer
-while Buzz is open. They work in `~/.buzz` by default and can run commands and
-edit files there.
-
-### 5. Talk to it
-
-- **New chat:** click **+** at the top of the Messages sidebar, beside
-  **All / Solo / Team**, and choose **New chat**. Your default agent is tagged
-  for you; type a message and send.
-- **Direct message:** open the agent's profile and click **Message**.
-- **In a channel:** @mention the agent. If it isn't in the channel yet, Buzz
-  asks whether to **Invite** it.
-
-### 6. Use the command line (optional)
-
-Buzz includes the `buzz` command line client at
-`/Applications/Buzz.app/Contents/Resources/bin/buzz`, so scripts and agents need
-no separate install. To run it as `buzz`, link it into your `PATH`:
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
+Node.js, Rust and pnpm, then run:
 
 ```sh
-mkdir -p ~/.local/bin
-ln -sf /Applications/Buzz.app/Contents/Resources/bin/buzz ~/.local/bin/buzz
+pnpm install
+pnpm tauri build --bundles app
 ```
 
-## Preview limitations
+On macOS (13.5+) the bundle is `target/release/bundle/macos/Gram.app`.
+Use `pnpm tauri dev` for development. The bundled `buzz` CLI and community
+protocols keep their upstream names for interoperability.
 
-- Builds come straight from `main`; there's no stable release channel yet.
-- Updates can break plugins (see [Plugins](#plugins)).
-- The Windows installer is unsigned, and Intel macOS, Windows and Linux get
-  less testing than Apple Silicon macOS.
-- Claude and Codex agents need macOS or Linux. Goose and Pi work everywhere.
-- Buzz doesn't back up your key, so keep your own copy (see step 2).
-- Bringing your identity over from Buzz 0.X doesn't bring your communities
-  (rejoin them in step 3) or your agents. On the Agents page, bring agents
-  with **Import them now** or **New agent → Import an agent**, and teams with
-  **New team → Import a team**.
+Local builds do not enable the upstream release updater. This fork does not
+claim upstream signing or notarization.
 
-## Plugins
+## Upstream and licensing
 
-Much of Buzz is built from plugins, and you can add your own in
-**Settings → Plugins**. The plugin API is a preview: Buzz changes fast, and an
-update can break a plugin.
+Buzz and Paseo are Apache-2.0 projects. The omp tool-call mapping in
+`src/bundled/omp/transcript` follows Paseo's omp provider, source revision
+`d13438ba50ed74c0d9057370b5f5c781aee0f687`; Paseo itself is not embedded or
+run.
 
-Some parts change less than others:
-
-- **Steady:** the manifest, commands, network requests and file reads, agent
-  tools, shortcuts, notifications, settings cards, and plugin pages and panels
-  (though where they appear may move).
-- **Likely to break:** reading relay data, anything added to conversations or
-  the sidebar, agent hooks, and UI added to pages Buzz owns.
-
-See [plugin architecture](docs/plugin-architecture.md) to build one.
-
-## Build from source
-
-```sh
-git clone https://github.com/block/buzz-app.git
-cd buzz-app
-bin/just desktop
-```
-
-Hermit in `bin/` pins every tool. Desktop builds also need the
-[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). See
-[contributing](docs/contributing.md) for development setup, live relay
-development, testing and hooks, and [plugin architecture](docs/plugin-architecture.md)
-to build plugins.
-
-## Project resources
-
-- [Contributing](docs/contributing.md)
-- [Plugin architecture and the `buzzodz` CLI](docs/plugin-architecture.md)
-- [Contextual identity names: cross-client spec and fixtures](src/bundled/identity-naming/README.md)
-- [Mention rules: cross-client spec and fixtures](src/bundled/mentions/README.md)
-- [Buzz feedback community invite](https://feedback.communities.buzz.xyz/invite/v2.yC8ZZIz5vwWCZYo2RRheuY1a0IKZRTXvxTmK7vIFIIY)
-- [@buzzdotxyz on X](https://x.com/buzzdotxyz)
-- [Project leads](CODEOWNERS)
-- [Governance](GOVERNANCE.md)
-- [Apache-2.0 license](LICENSE)
-- [Source attribution](NOTICE.md)
+- [Buzz license](LICENSE) and [source attribution](NOTICE.md)
+- [Paseo license](LICENSE.paseo)
+- [Plugin architecture](docs/plugin-architecture.md)
+- [Upstream contributing guide](docs/contributing.md)

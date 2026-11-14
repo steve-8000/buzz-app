@@ -1420,7 +1420,7 @@ it.each(["linked", "conversation"] as const)(
 // This wiring test uses real tab state, tab menus and channel ownership. Thread
 // bodies are irrelevant here; the menu must clear descriptors, not their DOM.
 it.each(["main", "side"] as const)(
-  "closing all via %s clears both panes, including hidden tabs, only in this channel",
+  "closing all via %s clears both panes, including hidden tabs, across the workspace",
   async (pane) => {
     const user = userEvent.setup();
     const channels = [
@@ -1555,7 +1555,8 @@ it.each(["main", "side"] as const)(
       mainSelected: undefined,
       paneOpen: false,
     });
-    expect(beta.tabs.map((tab) => tab.id)).toEqual(["thread:beta:kept"]);
+    // The workspace is one: closing all clears another channel's tab too.
+    expect(beta.tabs.map((tab) => tab.id)).toEqual([]);
     const closedSnapshot = state;
     act(() => expect(workspace.closeAllTabs()).toBe(false));
     expect(state).toBe(closedSnapshot);
@@ -1684,7 +1685,7 @@ it.each([
   ["a panel", "Side tabs", "Profile"],
   ["settings", "Side tabs", "Channel settings"],
 ] as const)(
-  "closing others from %s keeps it selected and clears the rest of this channel",
+  "closing others from %s keeps it selected and clears the rest of the workspace",
   async (_, strip, kept) => {
     const user = userEvent.setup();
     const channels = [
@@ -1828,7 +1829,11 @@ it.each([
     expect(state.thread).toBeUndefined();
     // The routed thread is retired only when it is one of those closed.
     expect(onCloseThread).toHaveBeenCalledTimes(kept === "First" ? 0 : 1);
-    expect(beta.tabs.map((item) => item.id)).toEqual(["thread:beta:other"]);
+    // The workspace is one: another channel's tab closes with the rest, and
+    // the kept side thread shows in every channel.
+    expect(beta.tabs.map((item) => item.id)).toEqual(
+      kept === "Second" ? ["thread:alpha:second"] : [],
+    );
     // Nothing else is left to close; the repeat changes nothing.
     const closedSnapshot = state;
     act(() =>

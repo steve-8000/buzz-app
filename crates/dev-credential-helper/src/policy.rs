@@ -112,26 +112,26 @@ pub fn allowed(operation: Operation, service: &str, account: &str) -> bool {
     use Operation::*;
     match service {
         // The release build's key, for `me`: read only, never copied or changed.
-        "xyz.block.buzz.desktop.identity" | "dev.local.buzz.foundation.identity" => {
+        "one.clab.gram.identity" | "one.clab.gram.identity-store" => {
             operation == Read && account == "human"
         }
         // The debug build's own key is create-only; paired-tool records beside it are mutable.
-        "xyz.block.buzz.desktop.identity.debug" | "dev.local.buzz.foundation.identity.debug" => {
+        "one.clab.gram.identity.debug" | "one.clab.gram.identity-store.debug" => {
             if account == "human" {
                 operation != Replace
             } else {
                 plain(account, "credential-pairings.v1.")
             }
         }
-        "xyz.block.buzz.desktop.agents" | "dev.local.buzz.foundation.agents" => {
+        "one.clab.gram.agents" | "one.clab.gram.agent-store" => {
             account == "agent-bundle-v1" || plain(account, "agent:")
         }
-        "xyz.block.buzz.desktop.federated-session.debug" => hex64(account),
-        "xyz.block.buzz.desktop.jev-key.debug" | "dev.local.buzz.foundation.jev-key.debug" => {
+        "one.clab.gram.federated-session.debug" => hex64(account),
+        "one.clab.gram.jev-key.debug" | "one.clab.gram.jev-key-store.debug" => {
             account == "typesafe"
         }
-        "xyz.block.buzz.desktop.claude-api-key.debug" => account == "anthropic",
-        "xyz.block.buzz.desktop.external-app-pairing.v1" => hex64(account),
+        "one.clab.gram.claude-api-key.debug" => account == "anthropic",
+        "one.clab.gram.external-app-pairing.v1" => hex64(account),
         _ => false,
     }
 }
@@ -149,19 +149,17 @@ mod tests {
         assert_eq!(parse(&args("--version")), Ok(Command::Version));
         assert_eq!(
             parse(&args(
-                "--authorize --item read xyz.block.buzz.desktop.identity human"
+                "--authorize --item read one.clab.gram.identity human"
             )),
             Ok(Command::Item(Request {
                 authorize: true,
                 operation: Operation::Read,
-                service: "xyz.block.buzz.desktop.identity".into(),
+                service: "one.clab.gram.identity".into(),
                 account: "human".into(),
             }))
         );
         assert!(matches!(
-            parse(&args(
-                "--item add xyz.block.buzz.desktop.identity.debug human"
-            )),
+            parse(&args("--item add one.clab.gram.identity.debug human")),
             Ok(Command::Item(Request {
                 authorize: false,
                 operation: Operation::Add,
@@ -175,13 +173,13 @@ mod tests {
         for bad in [
             "",
             "--item",
-            "--item read xyz.block.buzz.desktop.identity",
-            "--item read xyz.block.buzz.desktop.identity human extra",
-            "--agent-store read xyz.block.buzz.desktop.agents agent-bundle-v1",
-            "--session-store read xyz.block.buzz.desktop.federated-session.debug x",
-            "--item copy xyz.block.buzz.desktop.identity human",
-            "--authorize --authorize --item read xyz.block.buzz.desktop.identity human",
-            "--item read xyz.block.buzz.desktop.identity human --authorize",
+            "--item read one.clab.gram.identity",
+            "--item read one.clab.gram.identity human extra",
+            "--agent-store read one.clab.gram.agents agent-bundle-v1",
+            "--session-store read one.clab.gram.federated-session.debug x",
+            "--item copy one.clab.gram.identity human",
+            "--authorize --authorize --item read one.clab.gram.identity human",
+            "--item read one.clab.gram.identity human --authorize",
         ] {
             assert_eq!(parse(&args(bad)), Err(UNAVAILABLE), "{bad}");
         }
@@ -192,39 +190,35 @@ mod tests {
         use Operation::*;
         let hex = "0123456789abcdef".repeat(4);
         for (operation, service, account) in [
-            (Read, "xyz.block.buzz.desktop.identity", "human"),
-            (Read, "dev.local.buzz.foundation.identity", "human"),
-            (Read, "xyz.block.buzz.desktop.identity.debug", "human"),
-            (Add, "xyz.block.buzz.desktop.identity.debug", "human"),
-            (Delete, "xyz.block.buzz.desktop.identity.debug", "human"),
-            (Read, "dev.local.buzz.foundation.identity.debug", "human"),
+            (Read, "one.clab.gram.identity", "human"),
+            (Read, "one.clab.gram.identity-store", "human"),
+            (Read, "one.clab.gram.identity.debug", "human"),
+            (Add, "one.clab.gram.identity.debug", "human"),
+            (Delete, "one.clab.gram.identity.debug", "human"),
+            (Read, "one.clab.gram.identity-store.debug", "human"),
             (
                 Replace,
-                "xyz.block.buzz.desktop.identity.debug",
+                "one.clab.gram.identity.debug",
                 "credential-pairings.v1.main-1",
             ),
-            (Replace, "xyz.block.buzz.desktop.agents", "agent-bundle-v1"),
-            (Read, "dev.local.buzz.foundation.agents", "agent:abc-def"),
+            (Replace, "one.clab.gram.agents", "agent-bundle-v1"),
+            (Read, "one.clab.gram.agent-store", "agent:abc-def"),
             (
                 Replace,
-                "xyz.block.buzz.desktop.federated-session.debug",
+                "one.clab.gram.federated-session.debug",
                 hex.as_str(),
             ),
             (
                 Delete,
-                "xyz.block.buzz.desktop.federated-session.debug",
+                "one.clab.gram.federated-session.debug",
                 hex.as_str(),
             ),
-            (Replace, "xyz.block.buzz.desktop.jev-key.debug", "typesafe"),
-            (Read, "dev.local.buzz.foundation.jev-key.debug", "typesafe"),
+            (Replace, "one.clab.gram.jev-key.debug", "typesafe"),
+            (Read, "one.clab.gram.jev-key-store.debug", "typesafe"),
+            (Replace, "one.clab.gram.claude-api-key.debug", "anthropic"),
             (
                 Replace,
-                "xyz.block.buzz.desktop.claude-api-key.debug",
-                "anthropic",
-            ),
-            (
-                Replace,
-                "xyz.block.buzz.desktop.external-app-pairing.v1",
+                "one.clab.gram.external-app-pairing.v1",
                 hex.as_str(),
             ),
         ] {
@@ -236,53 +230,41 @@ mod tests {
         let upper = "0123456789ABCDEF".repeat(4);
         for (operation, service, account) in [
             // The release key is never written, copied over or deleted.
-            (Add, "xyz.block.buzz.desktop.identity", "human"),
-            (Replace, "xyz.block.buzz.desktop.identity", "human"),
-            (Delete, "xyz.block.buzz.desktop.identity", "human"),
-            (Delete, "dev.local.buzz.foundation.identity", "human"),
+            (Add, "one.clab.gram.identity", "human"),
+            (Replace, "one.clab.gram.identity", "human"),
+            (Delete, "one.clab.gram.identity", "human"),
+            (Delete, "one.clab.gram.identity-store", "human"),
             (
                 Read,
-                "xyz.block.buzz.desktop.identity",
+                "one.clab.gram.identity",
                 "credential-pairings.v1.main",
             ),
             // The debug key is create-only.
-            (Replace, "xyz.block.buzz.desktop.identity.debug", "human"),
-            (Read, "xyz.block.buzz.desktop.identity.debug", "other"),
+            (Replace, "one.clab.gram.identity.debug", "human"),
+            (Read, "one.clab.gram.identity.debug", "other"),
             (
                 Read,
-                "xyz.block.buzz.desktop.identity.debug",
+                "one.clab.gram.identity.debug",
                 "credential-pairings.v1.",
             ),
             (
                 Read,
-                "xyz.block.buzz.desktop.identity.debug",
+                "one.clab.gram.identity.debug",
                 "credential-pairings.v1.a/b",
             ),
-            (Read, "xyz.block.buzz.desktop.agents", "secrets"),
-            (Read, "xyz.block.buzz.desktop.agents", "agent:"),
+            (Read, "one.clab.gram.agents", "secrets"),
+            (Read, "one.clab.gram.agents", "agent:"),
             // Release-build sessions and keys belong to the release app.
+            (Read, "one.clab.gram.federated-session", hex.as_str()),
             (
                 Read,
-                "xyz.block.buzz.desktop.federated-session",
-                hex.as_str(),
-            ),
-            (
-                Read,
-                "xyz.block.buzz.desktop.federated-session.debug",
+                "one.clab.gram.federated-session.debug",
                 upper.as_str(),
             ),
-            (
-                Read,
-                "xyz.block.buzz.desktop.federated-session.debug",
-                "human",
-            ),
-            (Read, "xyz.block.buzz.desktop.jev-key", "typesafe"),
-            (Read, "xyz.block.buzz.desktop.claude-api-key", "anthropic"),
-            (
-                Read,
-                "xyz.block.buzz.desktop.claude-api-key.debug",
-                "openai",
-            ),
+            (Read, "one.clab.gram.federated-session.debug", "human"),
+            (Read, "one.clab.gram.jev-key", "typesafe"),
+            (Read, "one.clab.gram.claude-api-key", "anthropic"),
+            (Read, "one.clab.gram.claude-api-key.debug", "openai"),
             // Old Buzz and anything else.
             (Read, "buzz-desktop", "secrets"),
             (Read, "app.buzz.onedotzero", "identity"),

@@ -51,7 +51,7 @@ export function OnboardingScreen({
           <img
             className={styles.cornerMark}
             src="/welcome-bee.svg"
-            alt="Buzz"
+            alt="Gram"
             draggable={false}
           />
         )}

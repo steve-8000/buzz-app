@@ -24,9 +24,9 @@ use zeroize::Zeroizing;
 
 #[cfg_attr(test, allow(dead_code))]
 const SERVICE: &str = if cfg!(debug_assertions) {
-    "xyz.block.buzz.desktop.claude-api-key.debug"
+    "one.clab.gram.claude-api-key.debug"
 } else {
-    "xyz.block.buzz.desktop.claude-api-key"
+    "one.clab.gram.claude-api-key"
 };
 #[cfg_attr(test, allow(dead_code))]
 const ACCOUNT: &str = "anthropic";
@@ -140,8 +140,7 @@ impl ClaudeKey {
     }
 }
 
-/// The OS credential store: the login Keychain on macOS, the Secret Service on
-/// Linux and the Credential Manager on Windows.
+/// Platform credential storage.
 struct OsKeyStore;
 
 #[cfg(all(
@@ -180,12 +179,12 @@ fn stored(error: buzz_credential_store::Error) -> String {
     use buzz_credential_store::Error;
     match error {
         Error::Denied if cfg!(target_os = "macos") => {
-            "Keychain access was denied. Allow access and retry"
+            "Local secret storage access was denied. Check its permissions and retry"
         }
         Error::Denied => "Secure storage access was denied. Allow access and retry",
         Error::Busy => "Another Buzz app is using secure storage. Retry shortly",
         Error::Corrupt | Error::Ambiguous => "The saved key is damaged",
-        _ if cfg!(target_os = "macos") => "The Keychain is unavailable",
+        _ if cfg!(target_os = "macos") => "Local secret storage is unavailable",
         _ => "Secure storage is unavailable. Unlock it and retry",
     }
     .into()

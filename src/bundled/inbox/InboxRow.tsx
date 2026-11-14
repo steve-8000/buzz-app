@@ -48,6 +48,8 @@ export function rowIdentity(
   channel: ChannelSummary | undefined,
   profiles: ReadonlyMap<string, Profile>,
   name: ResolveName,
+  /** What the viewer named the row's thread, shown beside its channel. */
+  thread?: string,
 ) {
   const displayId = item.workflowOwnerId ?? item.authorId;
   const profile = profiles.get(displayId);
@@ -57,12 +59,13 @@ export function rowIdentity(
     channel?.members,
   );
   const sender = item.workflowOwnerId ? workflowLabel(resolved) : resolved;
-  const context =
+  const where =
     channel?.channelType === "dm"
       ? `DM · ${dmLabel(channel.participants, profiles, name, channel.name ?? "Direct message")}`
       : channel
         ? channelText(channel)
         : "Conversation";
+  const context = thread ? `${where} · ${thread}` : where;
   return { sender, context, profile };
 }
 

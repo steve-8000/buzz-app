@@ -113,7 +113,7 @@ import { WireframeScreen } from "./Wireframe";
 const RESTART_WAIT_MS = 30_000;
 /** The sign-in after Replace's restart reached an account other than the one it replaced the key for. */
 const WRONG_ACCOUNT =
-  "You signed in to a different Builderlab account than the one whose key Buzz restarted to restore. Use a different account to sign in to that one.";
+  "You signed in to a different Builderlab account than the one whose key Gram restarted to restore. Use a different account to sign in to that one.";
 
 /**
  * The signed-in account: the development seed when a dev server set one
@@ -207,7 +207,7 @@ export function Welcome({
         return connect
           ? connect(signal, { signup: create, forceLogin: switching.current })
           : Promise.reject(
-              new Error("This Buzz build has no Builderlab sign-in."),
+              new Error("This Gram build has no Builderlab sign-in."),
             );
       },
       federatedIdentity &&
@@ -452,7 +452,7 @@ export function Welcome({
         throw new Error(signOutFailure(reason));
       }
       await new Promise((settle) => setTimeout(settle, RESTART_WAIT_MS));
-      throw new Error("Buzz didn’t restart. Quit and reopen Buzz to finish.");
+      throw new Error("Gram didn’t restart. Quit and reopen Gram to finish.");
     },
   });
   if (inApp && viewer) {
@@ -555,7 +555,7 @@ export function Welcome({
             communities.snapshot().memberships.length > 0
               ? [
                   {
-                    label: "Opening Buzz…",
+                    label: "Opening Gram…",
                     run: async () => {
                       enterApp();
                       return { status: "idle" };
@@ -1180,7 +1180,7 @@ export function Welcome({
               tabIndex={-1}
               className="text-heading text-standard"
             >
-              Your Buzz identity
+              Your Gram identity
             </h1>
             {state.status === "loading" ? (
               <p role="status">Opening your saved identity…</p>
@@ -1189,7 +1189,7 @@ export function Welcome({
               // restarts into first run's restore or import, gets past it.
               <>
                 <p role="alert">
-                  Buzz can’t read the key saved on this computer, so it can’t
+                  Gram can’t read the key saved on this computer, so it can’t
                   open with it or copy it. Trying again won’t change that.
                 </p>
                 <Button onClick={() => setRemovingKey({ pending: false })}>
@@ -1198,7 +1198,7 @@ export function Welcome({
                 {removingKey && (
                   <AlertDialog
                     title="Remove the unreadable key?"
-                    description="This deletes it from this computer’s secure storage, signs you out of your organizations and restarts Buzz. Then sign in to restore your account’s key from its backup, or enter your private key. Without a backup or a copy, that identity can’t be recovered."
+                    description="This deletes it from this computer’s secure storage, signs you out of your organizations and restarts Gram. Then sign in to restore your account’s key from its backup, or enter your private key. Without a backup or a copy, that identity can’t be recovered."
                     pending={removingKey.pending}
                     onClose={() => setRemovingKey(undefined)}
                     actions={

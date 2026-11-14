@@ -85,35 +85,6 @@ fn packaged_managed_plugins_url(
     Ok(url.into())
 }
 
-fn builderlab_target(
-    local: &Path,
-    process: Option<String>,
-) -> Result<(String, String), &'static str> {
-    let values = build_env::load(local, &[BUILDERLAB_URL_KEY], |_| process.clone())?;
-    let raw = values
-        .get(BUILDERLAB_URL_KEY)
-        .map(String::as_str)
-        .unwrap_or("https://app.builderlab.xyz");
-    if raw.is_empty() {
-        return Ok((String::new(), String::new()));
-    }
-    let url = url::Url::parse(raw).map_err(|_| "Invalid Builderlab build URL")?;
-    if url.scheme() != "https"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err("Builderlab build URL must use HTTPS without credentials, query, or fragment");
-    }
-    // Native backup handoff trusts Builderlab credentials only for this API
-    // path, and decisions call under it. Drop one terminal slash, exactly as
-    // sign-in's `oauthTarget` does, so all three share the same path.
-    let path = url.path();
-    let api_base_path = format!("{}/api/goose/", path.strip_suffix('/').unwrap_or(path));
-    Ok((url.origin().ascii_serialization(), api_base_path))
-}
-
 fn builderlab_apps_domain(
     local: &Path,
     origin: &str,
@@ -153,37 +124,20 @@ fn builderlab_apps_domain(
 }
 
 const FI: &str = "BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG";
-const DEV_VIEWER: &str = "BUZZ_DEV_VIEWER";
 
-/// The build's Builderlab sign-in server, its first, when it has one. A
-/// `tauri dev` run's pinned viewer is the frontend's development broker.
-/// Tauri's `DEP_TAURI_DEV` reaches only builds with the `app` feature; a
-/// standalone build has none, so it drops the pin and keeps NIP-FI.
 fn federated_identity(
-    local: &Path,
     env: impl Fn(&str) -> Option<String>,
 ) -> Option<federated_identity_config::Config> {
     let added = env(FI);
-    let mut values = build_env::load(local, &[BUILDERLAB_URL_KEY, DEV_VIEWER], &env)
-        .expect("Invalid Builderlab build configuration");
-    let builderlab_url = values.remove(BUILDERLAB_URL_KEY);
-    let dev_viewer = federated_identity_config::dev_viewer(
-        values.remove(DEV_VIEWER),
-        env("DEP_TAURI_DEV").as_deref(),
-    );
     if added.as_deref().is_some_and(|raw| !raw.is_empty())
-        && builderlab_url.as_deref().is_some_and(|url| !url.is_empty())
+        && env(BUILDERLAB_URL_KEY).is_some_and(|url| !url.is_empty())
     {
         panic!("BUZZ_BUILDERLAB_URL must be removed when FI is configured");
     }
-    federated_identity_config::compiled(
-        added.as_deref(),
-        builderlab_url.as_deref(),
-        dev_viewer.as_deref(),
-    )
-    .expect("Invalid FI deployment descriptor")
-    .into_iter()
-    .next()
+    federated_identity_config::compiled(added.as_deref())
+        .expect("Invalid FI deployment descriptor")
+        .into_iter()
+        .next()
 }
 
 #[cfg_attr(test, allow(dead_code))]
@@ -211,8 +165,7 @@ fn main() {
         Err(std::env::VarError::NotUnicode(_)) => panic!("Native build inputs must be UTF-8"),
     };
     println!("cargo:rerun-if-env-changed={FI}");
-    println!("cargo:rerun-if-env-changed={DEV_VIEWER}");
-    let fi = federated_identity(&local, process);
+    let fi = federated_identity(process);
     println!(
         "cargo:rustc-env={FI}={}",
         fi.as_ref()
@@ -222,17 +175,23 @@ fn main() {
     // An FI build signs in to Builderlab through its NIP-FI identity origin.
     let (origin, api_base_path) = match &fi {
         Some(config) => (config.identity_origin.clone(), config.api_base_path.clone()),
-        None => builderlab_target(&local, process(BUILDERLAB_URL_KEY))
-            .expect("Invalid Builderlab build configuration"),
+        None => (String::new(), String::new()),
     };
-    let apps_domain = builderlab_apps_domain(&local, &origin, process(BUILDERLAB_APPS_DOMAIN_KEY))
-        .expect("Invalid Builderlab Apps build configuration");
+    let apps_domain = if origin.is_empty() {
+        String::new()
+    } else {
+        builderlab_apps_domain(&local, &origin, process(BUILDERLAB_APPS_DOMAIN_KEY))
+            .expect("Invalid Builderlab Apps build configuration")
+    };
     println!("cargo:rustc-env=BUZZ_BUILDERLAB_ORIGIN={origin}");
     println!("cargo:rustc-env={BUILDERLAB_API_BASE_PATH_KEY}={api_base_path}");
     println!("cargo:rustc-env=BUZZ_BUILDERLAB_APPS_DOMAIN={apps_domain}");
-    let control_plane =
+    let control_plane = if origin.is_empty() {
+        String::new()
+    } else {
         builderlab_apps_control_plane(&local, &origin, process(BUILDERLAB_APPS_CONTROL_PLANE_KEY))
-            .expect("Invalid Builderlab Apps control plane build configuration");
+            .expect("Invalid Builderlab Apps control plane build configuration")
+    };
     println!("cargo:rustc-env={BUILDERLAB_APPS_CONTROL_PLANE_KEY}={control_plane}");
     let access = repository_access(process(REPOSITORY_ACCESS_KEY))
         .unwrap_or_else(|reason| panic!("Invalid {REPOSITORY_ACCESS_KEY}: {reason}"));
@@ -246,28 +205,12 @@ fn main() {
 mod tests {
     use super::*;
 
-    /// Tauri's metadata in each build mode: `tauri dev` builds without
-    /// `custom-protocol`; `tauri build`, `--debug` or not, builds with it; a
-    /// standalone build, without the `app` feature, gets none.
     #[test]
-    fn pinned_viewer_turns_off_nip_fi_only_in_tauri_dev() {
-        let directory = tempfile::tempdir().unwrap();
-        let local = directory.path().join(".env.local");
-        std::fs::write(&local, "BUZZ_DEV_VIEWER=viewer.example\n").unwrap();
-        for (mode, tauri_dev, fi) in [
-            ("dev", Some("true"), None),
-            ("packaged debug", Some("false"), Some("bb-public")),
-            ("packaged release", Some("false"), Some("bb-public")),
-            ("standalone", None, Some("bb-public")),
-        ] {
-            let env = |key: &str| {
-                (key == "DEP_TAURI_DEV")
-                    .then(|| tauri_dev.map(String::from))
-                    .flatten()
-            };
-            let selected = federated_identity(&local, env).map(|config| config.id);
-            assert_eq!(selected.as_deref(), fi, "{mode}");
-        }
+    fn only_explicit_sign_in_servers_are_compiled() {
+        assert!(federated_identity(|_| None).is_none());
+        let descriptor = r#"{"version":1,"id":"self-hosted","identityOrigin":"https://identity.example","communityHosts":["relay.example"],"adapterBase":"https://identity.example/api","apiBasePath":"/api/"}"#;
+        let selected = federated_identity(|key| (key == FI).then(|| descriptor.to_owned()));
+        assert_eq!(selected.unwrap().id, "self-hosted");
     }
 
     #[test]
@@ -363,147 +306,6 @@ mod tests {
             );
         }
         assert!(builderlab_apps_domain(&local, "", Some("apps.example".into())).is_err());
-    }
-
-    #[test]
-    fn defaults_to_production_unless_explicitly_disabled() {
-        let directory = tempfile::tempdir().unwrap();
-        let local = directory.path().join(".env.local");
-        assert_eq!(
-            builderlab_target(&local, None).unwrap(),
-            ("https://app.builderlab.xyz".into(), "/api/goose/".into())
-        );
-        assert_eq!(
-            builderlab_apps_domain(&local, &builderlab_target(&local, None).unwrap().0, None)
-                .unwrap(),
-            "apps.builderlab.xyz"
-        );
-        assert_eq!(
-            builderlab_target(&local, Some(String::new())).unwrap(),
-            (String::new(), String::new())
-        );
-        std::fs::write(&local, "BUZZ_BUILDERLAB_URL=\n").unwrap();
-        assert_eq!(
-            builderlab_target(&local, None).unwrap(),
-            (String::new(), String::new())
-        );
-        assert_eq!(
-            builderlab_apps_domain(&local, &builderlab_target(&local, None).unwrap().0, None)
-                .unwrap(),
-            ""
-        );
-    }
-
-    #[test]
-    fn local_url_and_process_overrides_produce_an_exact_origin_and_api_path() {
-        let directory = tempfile::tempdir().unwrap();
-        let local = directory.path().join(".env.local");
-        assert_eq!(
-            builderlab_target(&local, None).unwrap(),
-            ("https://app.builderlab.xyz".into(), "/api/goose/".into())
-        );
-        std::fs::write(
-            &local,
-            "\u{feff}export BUZZ_BUILDERLAB_URL=\"https://OVERRIDE.EXAMPLE:443/deployment/\" # comment\n",
-        )
-        .unwrap();
-        assert_eq!(
-            builderlab_target(&local, None).unwrap(),
-            (
-                "https://override.example".into(),
-                "/deployment/api/goose/".into()
-            )
-        );
-        assert_eq!(
-            builderlab_target(&local, Some("https://login.example:8443/path/".into())).unwrap(),
-            (
-                "https://login.example:8443".into(),
-                "/path/api/goose/".into()
-            )
-        );
-        // Only one slash goes, as in sign-in, so an empty segment is kept.
-        assert_eq!(
-            builderlab_target(
-                &local,
-                Some("https://login.example:8443/deployment//".into())
-            )
-            .unwrap(),
-            (
-                "https://login.example:8443".into(),
-                "/deployment//api/goose/".into()
-            )
-        );
-        assert_eq!(
-            builderlab_target(&local, Some(String::new())).unwrap(),
-            (String::new(), String::new())
-        );
-    }
-
-    #[test]
-    fn invalid_configuration_fails_without_echoing_its_contents() {
-        let directory = tempfile::tempdir().unwrap();
-        let local = directory.path().join(".env.local");
-        for configured in [
-            "http://localhost:4318",
-            "https://user:secret@login.example",
-            "https://login.example?",
-            "https://login.example#",
-            "invalid",
-        ] {
-            let error = builderlab_target(&local, Some(configured.into())).unwrap_err();
-            assert!(!error.contains(configured));
-        }
-        std::fs::write(&local, "BUZZ_BUILDERLAB_URL='unterminated").unwrap();
-        assert_eq!(
-            builderlab_target(&local, None).unwrap_err(),
-            "Invalid native build .env.local"
-        );
-        // Explicit process input also overrides malformed same-key assignments.
-        assert_eq!(
-            builderlab_target(&local, Some(String::new())).unwrap(),
-            (String::new(), String::new())
-        );
-    }
-
-    #[test]
-    fn unrelated_syntax_is_ignored_without_promoting_multiline_contents() {
-        let directory = tempfile::tempdir().unwrap();
-        let local = directory.path().join(".env.local");
-        std::fs::write(&local, "PRIVATE_VALUE='unterminated").unwrap();
-        assert_eq!(
-            builderlab_target(&local, None).unwrap(),
-            ("https://app.builderlab.xyz".into(), "/api/goose/".into())
-        );
-
-        for quote in ["'", "\"", "`"] {
-            std::fs::write(
-                &local,
-                format!(
-                    "PRIVATE_VALUE={quote}multiline\nBUZZ_BUILDERLAB_URL=https://hidden.example\n{quote}\nINVALID=unquoted value\nexport BUZZ_BUILDERLAB_URL=https://after-multiline.example/\nTRAILING='unfinished\n"
-                ),
-            )
-            .unwrap();
-            assert_eq!(
-                builderlab_target(&local, None).unwrap(),
-                (
-                    "https://after-multiline.example".into(),
-                    "/api/goose/".into()
-                )
-            );
-        }
-        for quote in ["'", "\""] {
-            std::fs::write(
-                &local,
-                format!(
-                    "PRIVATE_VALUE={quote}unfinished\nBUZZ_BUILDERLAB_URL=https://hidden.example\n"
-                ),
-            )
-            .unwrap();
-            assert_eq!(
-                builderlab_target(&local, None).unwrap(),
-                ("https://app.builderlab.xyz".into(), "/api/goose/".into())
-            );
-        }
     }
 
     #[test]

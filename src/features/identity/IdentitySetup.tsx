@@ -21,7 +21,6 @@ import styles from "./IdentitySetup.module.css";
 import { OnboardingWordmark } from "./OnboardingWordmark";
 import { OnboardingScreen } from "./OnboardingScreen";
 
-/** Key import/create gate; the app's first launch now uses Welcome instead. */
 export function IdentitySetup({
   identity,
   children,
@@ -124,7 +123,7 @@ export function IdentitySetup({
             )}
           </>
         )}
-        {state.busy && <p role="status">Saving your identity securely…</p>}
+        {state.busy && <p role="status">Saving your identity locally…</p>}
       </OnboardingScreen>
     );
   }
@@ -146,7 +145,7 @@ export function IdentitySetup({
       >
         <div className={importing ? styles.importContent : styles.setupContent}>
           <h1 id="identity-setup-title" className="text-heading">
-            {importing ? "Use your existing identity" : "Your Buzz identity"}
+            {importing ? "Use your existing identity" : "Your Gram identity"}
           </h1>
           {state.status === "loading" ? (
             <p role="status">Opening your saved identity…</p>
@@ -161,8 +160,8 @@ export function IdentitySetup({
             <>
               {!importing && (
                 <p>
-                  Your key is stored securely on this device. No community is
-                  joined automatically.
+                  Your key is stored in a local file readable by this account.
+                  No community is joined automatically.
                 </p>
               )}
               {state.error && <p role="alert">{state.error}</p>}

@@ -41,10 +41,7 @@ pub(crate) const OLD_AGENTS: &str = "agent-controller";
 /// One lock per running agent, held by its supervisor until the agent has
 /// stopped, even after Buzz exits. Shared by every Buzz, under the user data folder.
 pub(crate) const AGENT_OWNERSHIP: &str = "dev.local.buzz.agent-ownership";
-/// What kept agents need to be identified and start again, by app data folder:
-/// the Agents list, and the earlier system's list and defaults to port from.
-/// Their keys live in the keychain. Anything else in these folders (hosting
-/// locks, saved logins, logs, run folders, and whatever is added later) is wiped.
+/// Agent registry files kept when agent identities survive sign-out.
 const KEPT: Kept = &[
     (
         AGENTS,

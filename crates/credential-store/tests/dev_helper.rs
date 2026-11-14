@@ -39,7 +39,7 @@ fn human_restore_uses_the_selected_helper_and_fails_closed() {
     fs::write(
         &helper,
         format!(
-            "#!/bin/sh\n[ \"$*\" = '--item read xyz.block.buzz.desktop.identity.debug human' ] || exit 11\nprintf '{payload}'\n"
+            "#!/bin/sh\n[ \"$*\" = '--item read one.clab.gram.identity.debug human' ] || exit 11\nprintf '{payload}'\n"
         ),
     )
     .unwrap();
@@ -50,7 +50,7 @@ fn human_restore_uses_the_selected_helper_and_fails_closed() {
     fs::write(
         &helper,
         format!(
-            "#!/bin/sh\n[ \"$*\" = '--authorize --item read xyz.block.buzz.desktop.identity.debug human' ] || exit 11\nprintf '{payload}'\n"
+            "#!/bin/sh\n[ \"$*\" = '--authorize --item read one.clab.gram.identity.debug human' ] || exit 11\nprintf '{payload}'\n"
         ),
     )
     .unwrap();
@@ -63,7 +63,7 @@ fn human_restore_uses_the_selected_helper_and_fails_closed() {
     fs::write(
         &helper,
         format!(
-            "#!/bin/sh\n[ \"$*\" = '--item read xyz.block.buzz.desktop.identity human' ] || exit 12\nprintf '{payload}'\n"
+            "#!/bin/sh\n[ \"$*\" = '--item read one.clab.gram.identity human' ] || exit 12\nprintf '{payload}'\n"
         ),
     )
     .unwrap();
@@ -105,14 +105,9 @@ fn human_restore_uses_the_selected_helper_and_fails_closed() {
         .success());
 
     let agent = |operation, value: &[u8]| {
-        dev_item(
-            operation,
-            "xyz.block.buzz.desktop.agents",
-            "agent-bundle-v1",
-            value,
-        )
-        .unwrap()
-        .map(|value| value.to_vec())
+        dev_item(operation, "one.clab.gram.agents", "agent-bundle-v1", value)
+            .unwrap()
+            .map(|value| value.to_vec())
     };
     for (body, expected) in [
         ("printf '{}'", Ok(b"{}".to_vec())),
@@ -139,7 +134,7 @@ fn human_restore_uses_the_selected_helper_and_fails_closed() {
     fs::write(&helper, "#!/bin/sh\n/usr/bin/head -c 2097153 /dev/zero\n").unwrap();
     assert_eq!(agent("read", &[]), Err(Error::Corrupt));
 
-    let service = "xyz.block.buzz.desktop.federated-session.debug";
+    let service = "one.clab.gram.federated-session.debug";
     let account = "1".repeat(64);
     for (body, expected) in [
         ("exit 10", Error::Absent),
@@ -222,7 +217,7 @@ esac
     fs::write(
         &helper,
         r##"#!/bin/sh
-[ "$#" = 4 ] && [ "$1" = --item ] && [ "$3" = xyz.block.buzz.desktop.claude-api-key.debug ] && [ "$4" = anthropic ] || exit 12
+[ "$#" = 4 ] && [ "$1" = --item ] && [ "$3" = one.clab.gram.claude-api-key.debug ] && [ "$4" = anthropic ] || exit 12
 case "$2" in
   add) [ -f "$0.item" ] && exit 13; /bin/cat <&1 > "$0.item" ;;
   replace) /bin/cat <&1 > "$0.item" ;;
@@ -233,7 +228,7 @@ esac
 "##,
     )
     .unwrap();
-    let (claude, key) = ("xyz.block.buzz.desktop.claude-api-key.debug", "anthropic");
+    let (claude, key) = ("one.clab.gram.claude-api-key.debug", "anthropic");
     add(claude, key, b"first").unwrap();
     assert_eq!(add(claude, key, b"second"), Err(Error::Occupied));
     assert_eq!(

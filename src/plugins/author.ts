@@ -87,6 +87,8 @@ export type {
   MessageRenderer,
   MessageAction,
   IdentityMark,
+  ThreadFlow,
+  ThreadFlowProps,
   TargetOpener,
 } from "../features/conversation/contracts";
 export type { RelayData, RelaySnapshot } from "../features/relay/service";

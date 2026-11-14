@@ -3,36 +3,79 @@
 // computer. omp's questions (approvals, choices) are posted into the
 // conversation and answered by the owner's next message; a message that is
 // not an answer steers the run that is under way.
+import {
+  attachmentMarkdown,
+  attachmentName,
+} from "../../features/relay/attachments";
 import type {
   HarnessConversation,
   HarnessKit,
 } from "../../features/agent-harness/kit";
 import type { AgentHandle, Delivery } from "../../features/agents/service";
+import type {
+  Transcript,
+  Transcripts,
+} from "../../features/agent-session/transcript";
 import type { Host, HostProcess } from "../../features/host/service";
 import { Admission } from "./admission";
+import { answerLabel, formatAnswered, formatQuestion, retryHint } from "./ask";
 import { type Config, config } from "./config";
+import { diagramsOf, extension, type Shot, shotsOf } from "./media";
+import { intro, slim } from "./prompt";
+import {
+  type Choice,
+  describeRepositories,
+  LIST_SCRIPT,
+  parseRepositories,
+  pickRepository,
+  type Repo,
+} from "./repos";
 import {
   answerTo,
   type Frame,
-  isRecord,
+  isAnswerWord,
   OmpRpc,
   type UiAnswer,
   type UiRequest,
 } from "./rpc";
+import { requestThread } from "./auto-open";
+import { noteSession, sessionKey } from "./session-link";
+import { OmpTranscriptBuilder, type Outcome } from "./transcript/builder";
+import { APPROVE, approvalOf } from "./transcript/notes";
+import { clipTo, squash, targetOf } from "./transcript/target";
 import { type ExecResult, prepareWorktree, slug } from "./worktree";
 
 /** A conversation's omp process stops after this long without a turn. */
 const IDLE_MS = 15 * 60_000;
 /** Turns running at once across every omp agent in the app. */
 export const GLOBAL_LIMIT = 8;
-const DATA_ROOT = "~/.buzz/omp";
+const DATA_ROOT = "~/.gram/omp";
 /** Posts are cut here; the relay refuses very long messages. */
 const REPLY_LIMIT = 6000;
+/** Pictures posted per run, so a long QA pass cannot flood the conversation. */
+const SHOT_LIMIT = 8;
+/** Pictures and diagrams shown within this long of the first go out as one
+ * message, or sooner when the run posts something else. */
+const SHOT_WINDOW_MS = 60_000;
 
 type Pending = {
   request: UiRequest;
-  settle(answer: UiAnswer): void;
+  settle(answer: UiAnswer, label?: string, outcome?: Outcome): void;
   timer: ReturnType<typeof setTimeout>;
+  /** The question's message id, once it is posted. */
+  posted?: Promise<string | undefined>;
+};
+
+/** What a run showed that is waiting to be posted. */
+type Media = {
+  shots: Shot[];
+  diagrams: string[];
+  /** Pictures and diagrams already taken this run. */
+  seen: Set<string>;
+  /** Pictures posted this run. */
+  posted: number;
+  timer?: ReturnType<typeof setTimeout> | undefined;
+  sending: Promise<unknown>;
 };
 
 type Session = {
@@ -45,6 +88,13 @@ type Session = {
   starting?: Promise<OmpRpc> | undefined;
   cwd: string;
   branch?: string | undefined;
+  /** Where the conversation works: its repository, "" for none, undefined
+   * until chosen. */
+  repo?: string | undefined;
+  repos?: readonly Repo[] | undefined;
+  /** A folder of repositories the conversation works in across, when its
+   * channel names the folder and the message names no single repository. */
+  hub?: string | undefined;
   cursor?: string | undefined;
   busy: boolean;
   /** omp's session has no messages yet, so the first prompt carries Buzz's
@@ -58,6 +108,10 @@ type Session = {
   delivery?: Delivery<Config> | undefined;
   stderr: string;
   stopped: AbortController;
+  media: Media;
+  /** What the session said and did, as the items its readers see. */
+  builder: OmpTranscriptBuilder;
+  transcript: Transcript;
 };
 
 function errorText(error: unknown) {
@@ -77,30 +131,24 @@ function wordsOf(delivery: Delivery<Config>) {
     : "";
 }
 
-function formatQuestion(request: UiRequest, minutes: number) {
-  const lines = [`🔐 **${request.title || "omp asks"}**`];
-  if (request.message) lines.push("", request.message);
-  if (request.method === "confirm")
-    lines.push("", "Reply `approve` or `deny` (mention me).");
-  else if (request.method === "select")
-    lines.push(
-      "",
-      ...(request.options ?? []).map((option, at) => `${at + 1}. ${option}`),
-      "",
-      "Reply with a number, or `deny` (mention me).",
-    );
-  else lines.push("", "Reply with the text, or `deny` (mention me).");
-  lines.push(`Refused automatically after ${minutes} minutes.`);
-  return lines.join("\n");
+/** What the owner asked, in one line, for the run's row. */
+function promptOf(delivery: Delivery<Config>) {
+  return clipTo(squash(wordsOf(delivery).replace(/nostr:\S+/g, "")), 200);
 }
 
-function target(frame: Frame) {
-  const args = frame.args;
-  if (!isRecord(args)) return undefined;
-  for (const key of ["path", "file", "command", "pattern", "query"]) {
-    const value = args[key];
-    if (typeof value === "string" && value) return value.slice(0, 120);
-  }
+function outcomeOf(request: UiRequest, answer: UiAnswer): Outcome {
+  if ("cancelled" in answer) return "cancelled";
+  if ("confirmed" in answer) return answer.confirmed ? "approved" : "denied";
+  const approval = approvalOf(request);
+  if (!approval) return "answered";
+  return answer.value === APPROVE || answer.value === approval.grant
+    ? "approved"
+    : "denied";
+}
+
+function answerText(answer: UiAnswer) {
+  if ("value" in answer) return answer.value;
+  if ("confirmed" in answer) return answer.confirmed ? "Yes" : "No";
   return undefined;
 }
 
@@ -112,6 +160,7 @@ export class OmpRuntime {
   constructor(
     private readonly host: Host,
     private readonly harness: HarnessKit,
+    private readonly transcripts: Transcripts,
   ) {}
 
   async run(delivery: Delivery<Config>): Promise<void> {
@@ -125,6 +174,11 @@ export class OmpRuntime {
     const id = `${delivery.agent.key}\n${conversation.key}`;
     let session = this.sessions.get(id);
     if (!session) {
+      const transcript = this.transcripts.open({
+        agent: delivery.agent,
+        channel: conversation.channel,
+        root: conversation.root,
+      });
       session = {
         id,
         agent: delivery.agent,
@@ -138,31 +192,54 @@ export class OmpRuntime {
         asking: Promise.resolve(),
         stderr: "",
         stopped: new AbortController(),
+        builder: new OmpTranscriptBuilder((item) => transcript.push(item)),
+        transcript,
+        media: {
+          shots: [],
+          diagrams: [],
+          seen: new Set(),
+          posted: 0,
+          sending: Promise.resolve(),
+        },
       };
       this.sessions.set(id, session);
     }
+    noteSession(
+      sessionKey(
+        delivery.agent.pubkey,
+        conversation.channel,
+        conversation.root,
+      ),
+    );
     session.config = cfg;
+    session.conversation = conversation;
     clearTimeout(session.idle);
 
     if (session.pending) {
       const answer = answerTo(session.pending.request, wordsOf(delivery));
       if (answer) session.pending.settle(answer);
-      else
-        await this.say(
-          session,
-          "Reply `approve` or `deny` to the question above.",
-        );
+      else await this.say(session, retryHint(session.pending.request));
       return;
     }
 
-    if (session.busy && session.rpc) {
+    // A second click on a button whose question is gone: sent on, it would
+    // start a run, and omp's approval gate forgets what was approved.
+    if (isAnswerWord(wordsOf(delivery))) {
+      await this.say(
+        session,
+        "No question is waiting, so that reply was not sent to omp.",
+      );
+      return;
+    }
+
+    if ((session.busy || session.rpc?.streaming) && session.rpc) {
       const prompt = await this.harness.turnPrompt(
         delivery,
         conversation,
         session.cursor ? { cursor: session.cursor } : undefined,
       );
       try {
-        await session.rpc.steer(prompt.text);
+        await session.rpc.steer(slim(prompt.text));
         session.cursor = prompt.cursor;
       } catch (error) {
         prompt.restore();
@@ -201,22 +278,88 @@ export class OmpRuntime {
     await Promise.all([...this.sessions.values()].map((s) => this.close(s)));
   }
 
+  /** The question an agent's session waits on in a conversation, for the card
+   * that shows it: only this computer can answer it. */
+  pending(
+    channel: string,
+    root: string | undefined,
+    author: string,
+    id: string,
+  ) {
+    const session = this.find(channel, root, author);
+    return session?.pending?.request.id === id ? session.pending : undefined;
+  }
+
+  /** Answers an agent's question from its card, as the owner would by
+   * replying. */
+  answer(
+    channel: string,
+    root: string | undefined,
+    author: string,
+    id: string,
+    answer: UiAnswer,
+  ) {
+    const pending = this.pending(channel, root, author, id);
+    if (!pending) return false;
+    pending.settle(answer);
+    return true;
+  }
+
+  private find(channel: string, root: string | undefined, author: string) {
+    return [...this.sessions.values()].find(
+      (session) =>
+        session.agent.pubkey === author &&
+        session.conversation.channel === channel &&
+        session.conversation.root === root,
+    );
+  }
+
+  /** A run omp began by itself, as after a background job or a queued
+   * message: its reply is posted like a turn's. */
+  private async continued(session: Session) {
+    const rpc = session.rpc;
+    if (!rpc) return;
+    session.busy = true;
+    clearTimeout(session.idle);
+    session.media.posted = 0;
+    session.media.seen.clear();
+    session.builder.beginRun();
+    try {
+      const end = await rpc.nextEnd();
+      const text = end.error ? `⚠️ ${end.error}` : end.text;
+      const reply = text
+        ? await this.say(session, text, !!end.error)
+        : undefined;
+      session.builder.endRun({
+        state: end.error ? "failed" : "done",
+        error: end.error,
+        reply,
+      });
+    } catch {
+      // The process ended; its exit already settled the session.
+      session.builder.endRun({ state: "stopped" });
+    } finally {
+      session.busy = false;
+      if (!session.pending && this.sessions.get(session.id) === session)
+        session.idle = setTimeout(() => void this.close(session), IDLE_MS);
+    }
+  }
+
   private async turn(session: Session, delivery: Delivery<Config>) {
     const cfg = session.config;
-    const release = await this.admission.acquire(
-      cfg.repo || cfg.workspace,
-      cfg.maxConcurrent,
-      session.stopped.signal,
-    );
+    let release: (() => void) | undefined;
+    session.media.posted = 0;
+    session.media.seen.clear();
     try {
+      const repo = await this.locate(session, cfg);
+      release = await this.admission.acquire(
+        repo || cfg.workspace,
+        cfg.maxConcurrent,
+        session.stopped.signal,
+      );
       const rpc = await this.ensure(session, cfg);
       const system = session.fresh
-        ? await this.harness.systemPrompt(delivery, {
-            scope: cfg.scope,
-            cwd: session.cwd,
-            instructions: cfg.instructions,
-            tools: false,
-          })
+        ? intro(delivery.agent.name, [cfg.instructions, this.note(session)])
         : "";
       const prompt = await this.harness.turnPrompt(
         delivery,
@@ -225,8 +368,21 @@ export class OmpRuntime {
       );
       const end = rpc.nextEnd();
       end.catch(() => undefined);
+      session.builder.beginRun(
+        delivery.trigger.type === "mention"
+          ? delivery.trigger.event.id
+          : undefined,
+        promptOf(delivery) || undefined,
+      );
+      if (
+        delivery.trigger.type === "mention" &&
+        !delivery.trigger.resumed &&
+        session.conversation.root
+      )
+        requestThread(delivery.trigger.event.id);
       try {
-        await rpc.prompt(system ? `${system}\n\n${prompt.text}` : prompt.text);
+        const text = slim(prompt.text);
+        await rpc.prompt(system ? `${system}\n\n${text}` : text);
       } catch (error) {
         prompt.restore();
         throw error;
@@ -235,7 +391,12 @@ export class OmpRuntime {
       session.cursor = prompt.cursor;
       const result = await end;
       if (result.error) {
-        await this.say(session, `⚠️ ${result.error}`, true);
+        const reply = await this.say(session, `⚠️ ${result.error}`, true);
+        session.builder.endRun({
+          state: "failed",
+          error: result.error,
+          reply,
+        });
         return;
       }
       let text = result.text || "(omp finished without a reply.)";
@@ -243,17 +404,127 @@ export class OmpRuntime {
         session.announced = true;
         text += `\n\n🌿 \`${session.branch}\` · \`${session.cwd}\``;
       }
-      await this.say(session, text);
+      const reply = await this.say(session, text);
+      session.builder.endRun({
+        state: session.stopRequested ? "stopped" : "done",
+        reply,
+      });
     } catch (error) {
-      await this.say(session, `⚠️ ${errorText(error)}`, true);
+      const reply = await this.say(session, `⚠️ ${errorText(error)}`, true);
+      session.builder.endRun({
+        state: session.stopRequested ? "stopped" : "failed",
+        error: errorText(error),
+        reply,
+      });
       throw error;
     } finally {
-      release();
+      release?.();
+      session.builder.endRun({
+        state: session.stopRequested ? "stopped" : "failed",
+      });
       session.busy = false;
       session.delivery = undefined;
       if (!session.pending && this.sessions.get(session.id) === session)
         session.idle = setTimeout(() => void this.close(session), IDLE_MS);
     }
+  }
+
+  /** The repository this conversation works in: named in the owner's first
+   * message, or like its channel, from the agent's folders; else the agent's
+   * own repository. Chosen once, so a conversation keeps its worktree. */
+  private async locate(session: Session, cfg: Config): Promise<string> {
+    if (session.repo === undefined) {
+      session.repo = "";
+      if (cfg.roots.length) {
+        const repos = await this.repositories(cfg.roots);
+        session.repos = repos;
+        const prior = await this.prior(session);
+        const known = prior
+          ? repos.find((item) => item.name === prior)
+          : undefined;
+        const kept = known ? "" : await this.hubOf(session);
+        const words = session.delivery ? wordsOf(session.delivery) : "";
+        const choice: Choice = known
+          ? { repo: known }
+          : kept
+            ? { hub: kept }
+            : pickRepository(repos, session.conversation.where, words);
+        const { repo, asked, hub } = choice;
+        if (asked && !repo) {
+          session.repo = undefined;
+          throw new Error(
+            `No repository named \`${asked}\` in ${cfg.roots.join(", ")}.`,
+          );
+        }
+        session.repo = repo?.path ?? "";
+        if (hub) {
+          session.hub = hub;
+          if (!kept) await this.markHub(session, hub);
+        }
+      }
+    }
+    return session.repo || session.hub || cfg.repo;
+  }
+
+  private async shell(script: string, args: readonly string[]) {
+    if (!this.host.spawn) throw new Error("This build cannot start processes.");
+    let out = "";
+    const proc = await this.host.spawn("sh", {
+      args: [script, "buzz", ...args],
+      cwd: DATA_ROOT,
+      onStdout: (data) => {
+        out += data;
+      },
+    });
+    await proc.exited;
+    return out;
+  }
+
+  private async repositories(roots: readonly string[]): Promise<Repo[]> {
+    return parseRepositories(await this.shell(LIST_SCRIPT, roots));
+  }
+
+  /** The repository whose worktree this conversation already has, so a
+   * restart or a later message cannot move it to another repository. */
+  private async prior(session: Session): Promise<string | undefined> {
+    const out = await this.shell(
+      'ls -d "$HOME"/.gram/omp/worktrees/*/"$1" 2>/dev/null',
+      [slug(session.id)],
+    );
+    return out
+      .split("\n")
+      .map((line) => line.trim().split("/").slice(-2)[0])
+      .find(Boolean);
+  }
+
+  /** The folder this conversation works across, kept like its worktree. */
+  private async hubOf(session: Session): Promise<string> {
+    const out = await this.shell(
+      'cat "$HOME"/.gram/omp/hubs/"$1" 2>/dev/null',
+      [slug(session.id)],
+    );
+    return out.trim();
+  }
+
+  private async markHub(session: Session, hub: string) {
+    await this.shell(
+      'mkdir -p "$HOME"/.gram/omp/hubs && printf %s "$2" > "$HOME"/.gram/omp/hubs/"$1"',
+      [slug(session.id), hub],
+    );
+  }
+
+  /** Where the conversation works and what exists, as facts. */
+  private note(session: Session) {
+    if (!session.repos?.length) return "";
+    const where = session.hub
+      ? `Your working directory is ${session.hub}, the owner's folder of repositories. They are the owner's own checkouts and can hold uncommitted work.`
+      : `Your working directory is a git worktree of ${session.repo || "no repository"}${session.branch ? ` on branch ${session.branch}` : ""}, made for this conversation. The owner's own checkouts are elsewhere and can hold uncommitted work.`;
+    return [
+      where,
+      "Repositories by folder:",
+      describeRepositories(session.repos),
+      "A thread started with `repo:<name>` works in its own worktree of that repository.",
+    ].join("\n");
   }
 
   private async directory(path: string) {
@@ -293,11 +564,12 @@ export class OmpRuntime {
     this.root ??= this.directory(DATA_ROOT);
     const root = await this.root;
     let cwd: string;
-    if (cfg.repo) {
+    const picked = session.hub ? "" : session.repo || cfg.repo;
+    if (picked) {
       const worktree = await prepareWorktree(
         (args, dir) => this.git(args, dir),
         {
-          repo: await this.directory(cfg.repo),
+          repo: await this.directory(picked),
           base: cfg.base,
           root: `${root}/worktrees`,
           key: session.id,
@@ -306,7 +578,7 @@ export class OmpRuntime {
       cwd = worktree.path;
       session.branch = worktree.branch;
     } else {
-      cwd = await this.directory(cfg.workspace);
+      cwd = await this.directory(session.hub || cfg.workspace);
     }
     session.cwd = cwd;
 
@@ -338,21 +610,45 @@ export class OmpRuntime {
             session.pending.request.method === "confirm"
               ? { confirmed: false }
               : { cancelled: true },
+            "↩ omp withdrew the question",
+            "cancelled",
           );
       },
       event: (frame) => {
+        session.builder.feed(frame);
         if (frame.type === "tool_execution_start") {
           const tool =
             typeof frame.toolName === "string" ? frame.toolName : "tool";
-          session.delivery?.step?.(tool, target(frame));
+          session.delivery?.step?.(
+            tool,
+            tool === "wait"
+              ? (session.builder.waiting() ?? "a reply or a background job")
+              : targetOf(frame.args, frame.intent),
+          );
         }
+        this.collect(session, frame);
       },
-      exited: () => {
+      exited: (code) => {
         if (session.rpc === client) {
           session.rpc = undefined;
           session.proc = undefined;
         }
-        session.pending?.settle({ cancelled: true });
+        session.pending?.settle(
+          { cancelled: true },
+          "⏹ omp stopped",
+          "cancelled",
+        );
+        if (session.busy && code !== 0 && !session.stopRequested) {
+          const tail = session.stderr.trim().split("\n").slice(-6).join("\n");
+          session.builder.feed({
+            type: "notice",
+            level: "error",
+            message: `omp exited (${code ?? "signal"})${tail ? `\n${tail}` : ""}`,
+          });
+        }
+      },
+      started: () => {
+        if (!session.busy) void this.continued(session);
       },
     });
     rpc = client;
@@ -385,26 +681,143 @@ export class OmpRuntime {
           const minutes = session.config.approvalMinutes;
           const pending: Pending = {
             request,
-            settle: (answer) => {
+            settle: (
+              answer,
+              label = answerLabel(answer),
+              outcome = outcomeOf(request, answer),
+            ) => {
               clearTimeout(pending.timer);
-              if (session.pending === pending) session.pending = undefined;
+              const current = session.pending === pending;
+              if (current) session.pending = undefined;
               resolve(answer);
+              if (current) {
+                session.builder.answered(
+                  request.id,
+                  outcome,
+                  answerText(answer),
+                );
+                void this.answered(session, pending, label);
+              }
             },
             timer: setTimeout(() => {
-              pending.settle(refused);
-              void this.say(session, "⏱ No answer in time; refused.");
+              pending.settle(
+                refused,
+                "⏱ No answer in time, refused",
+                "expired",
+              );
             }, minutes * 60_000),
           };
           session.pending = pending;
-          void this.say(session, formatQuestion(request, minutes), true);
+          session.builder.ask(request);
+          const posted = this.say(
+            session,
+            formatQuestion(request, minutes),
+            true,
+          );
+          pending.posted = posted;
+          void posted.then((id) => {
+            if (id) session.builder.asked(request.id, id);
+          });
         }),
     );
     session.asking = next.catch(() => undefined);
     return next;
   }
 
-  private async say(session: Session, text: string, notifyOwner = false) {
+  /** Takes the pictures and diagrams a frame shows, to post soon. */
+  private collect(session: Session, frame: Frame) {
+    const media = session.media;
+    let added = false;
+    for (const shot of shotsOf(frame)) {
+      if (
+        media.seen.has(shot.key) ||
+        media.posted + media.shots.length >= SHOT_LIMIT
+      )
+        continue;
+      media.seen.add(shot.key);
+      media.shots.push(shot);
+      added = true;
+    }
+    for (const diagram of diagramsOf(frame)) {
+      if (media.seen.has(diagram)) continue;
+      media.seen.add(diagram);
+      media.diagrams.push(diagram);
+      added = true;
+    }
+    if (!added) return;
+    media.timer ??= setTimeout(
+      () => void this.flushMedia(session),
+      SHOT_WINDOW_MS,
+    );
+  }
+
+  /** Posts what the run has shown so far; later posts come after it. */
+  private flushMedia(session: Session) {
+    const media = session.media;
+    clearTimeout(media.timer);
+    media.timer = undefined;
+    const shots = media.shots.splice(0);
+    const diagrams = media.diagrams.splice(0);
+    if (shots.length || diagrams.length)
+      media.sending = media.sending
+        .then(() => this.postMedia(session, shots, diagrams))
+        .catch(() => undefined);
+    return media.sending;
+  }
+
+  private async postMedia(
+    session: Session,
+    shots: readonly Shot[],
+    diagrams: readonly string[],
+  ) {
+    const tags: string[][] = [];
+    const links: string[] = [];
+    for (const shot of shots) {
+      try {
+        const upload = await session.agent.upload(shot.data, shot.mime);
+        session.media.posted++;
+        const name = attachmentName(
+          `${shot.tool}-${session.media.posted}.${extension(upload.type)}`,
+        );
+        tags.push([
+          "imeta",
+          `url ${upload.url}`,
+          `m ${upload.type}`,
+          `size ${upload.size}`,
+          `x ${upload.sha256}`,
+          `filename ${name}`,
+          ...(upload.dim ? [`dim ${upload.dim}`] : []),
+        ]);
+        links.push(attachmentMarkdown(name, upload));
+      } catch {
+        // A picture the community refuses is left out; the run goes on.
+      }
+    }
+    const text = [...diagrams, ...links].join("\n\n");
+    if (text)
+      await this.harness
+        .reply(session.agent, session.conversation, text, { tags })
+        .catch(() => undefined);
+  }
+
+  /** Rewrites a settled question as what became of it, so the message holds
+   * no buttons wherever and whenever it is opened again. */
+  private async answered(session: Session, pending: Pending, label: string) {
+    const id = await pending.posted;
+    if (!id) return;
     await this.harness
+      .revise(
+        session.agent,
+        session.conversation,
+        id,
+        clip(formatAnswered(pending.request, label)),
+      )
+      .catch(() => undefined);
+  }
+
+  private async say(session: Session, text: string, notifyOwner = false) {
+    await this.flushMedia(session);
+    return this.harness
       .reply(session.agent, session.conversation, clip(text), { notifyOwner })
       .catch(() => undefined);
   }
@@ -412,11 +825,15 @@ export class OmpRuntime {
   private async close(session: Session) {
     clearTimeout(session.idle);
     session.stopped.abort();
-    session.pending?.settle({ cancelled: true });
+    session.pending?.settle({ cancelled: true }, "⏹ Stopped", "cancelled");
     if (this.sessions.get(session.id) === session)
       this.sessions.delete(session.id);
     await session.rpc?.kill().catch(() => undefined);
     session.rpc = undefined;
     session.proc = undefined;
+    session.builder.endRun({ state: "stopped" });
+    session.builder.dispose();
+    await session.transcript.settle().catch(() => undefined);
+    session.transcript.dispose();
   }
 }

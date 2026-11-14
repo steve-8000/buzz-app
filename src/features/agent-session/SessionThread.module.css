@@ -1,0 +1,100 @@
+.segment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-block: var(--space-3);
+  padding-inline: var(--message-hover-inset, var(--space-4));
+}
+.head {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.name {
+  color: var(--text-primary);
+}
+.reason {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 2px solid var(--border-standard);
+}
+.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--text-primary);
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-standard);
+  border-radius: var(--radius-lg);
+  background: var(--surface-inset);
+}
+.card[data-state="pending"] {
+  border-color: var(--border-focus);
+}
+.card > * {
+  margin-block: 0;
+}
+.cardTitle {
+  color: var(--text-primary);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.frame {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+}
+.view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-block: var(--space-2);
+}
+.view[data-outline] {
+  padding-inline-end: var(--space-6);
+}
+.prompt {
+  margin: 0 var(--message-hover-inset, var(--space-4));
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.empty {
+  margin: 0;
+  padding: var(--space-4);
+}
+.opened,
+.nested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.nested {
+  max-height: calc(var(--space-16) * 6);
+  overflow-y: auto;
+}

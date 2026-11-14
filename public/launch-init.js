@@ -99,7 +99,7 @@ if (launch && mark) {
     const title = element(
       "h1",
       "",
-      running ? "Buzz stopped working" : "Buzz couldn’t open",
+      running ? "Gram stopped working" : "Gram couldn’t open",
     );
     title.id = "buzz-startup-failure-title";
     message.append(
@@ -117,7 +117,7 @@ if (launch && mark) {
     actions.append(first);
     if (native)
       actions.append(
-        button("Restart Buzz", () => {
+        button("Restart Gram", () => {
           void native.invoke("update_restart").catch(reload);
         }),
       );

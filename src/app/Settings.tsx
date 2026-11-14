@@ -232,7 +232,7 @@ function PluginProvenance({
   className?: string | undefined;
 }) {
   const label = [
-    source === "bundled" ? "Buzz" : publisher,
+    source === "bundled" ? "Gram" : publisher,
     managedBy && `Managed by ${managedBy}`,
   ]
     .filter(Boolean)

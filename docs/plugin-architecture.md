@@ -3128,6 +3128,26 @@ real runtime. Native WebKit right-click selection and context-menu behavior,
 screen reader announcement of `aria-invalid`, and IME composition in the
 desktop app are not exercised there.
 
+### Thread flows
+
+`ctx.conversation.registerThreadFlow({ id, title, component })` lets a plugin
+lay out a thread's replies together with content of its own, as the bundled
+Oh My Pi plugin does for the steps an agent took between the thread's messages.
+The first contribution lays out every thread; the host draws its own rows when
+none is registered, or when the component throws.
+
+The component receives `{ session, channelId, rootId, replies }`, where
+`replies` lists the thread's top-level replies in the host's order, each as
+`{ message, row }`: the message and the host's own `<li>` row for it, keyed by
+message id. It returns list items for the thread's `<ol>`: those rows, in any
+order and mixed with its own `<li>` elements, or just the rows when it has
+nothing to add. A reply it leaves out is not shown. The host keeps the thread's
+header, composer, reading position and unread tracking; nested replies stay
+inside the host's rows.
+
+The component owns the data it adds, including how it is stored and who may
+read it. Nothing it draws grants access or sends a message.
+
 ## Desktop browser
 
 Plugins can render the host-provided [`browser.View` component](browser.md) inside a panel. It opens HTTP(S) pages beside the conversation on macOS desktop. The host owns website rendering, navigation controls, and native session cleanup. Remote pages receive no Buzz IPC bridge; plugin JavaScript remains trusted same-process code. The [capability guide](browser.md#try-the-capability-with-a-local-plugin) includes a complete local-plugin example and installation steps.

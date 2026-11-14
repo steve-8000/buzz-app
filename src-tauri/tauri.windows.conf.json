@@ -1,5 +1,5 @@
 {
-  "productName": "Buzz Foundation",
+  "productName": "Gram",
   "bundle": {
     "publisher": "local",
     "windows": { "nsis": { "installerHooks": "installer-hooks.nsh" } }
@@ -7,7 +7,7 @@
   "app": {
     "windows": [
       {
-        "title": "Buzz",
+        "title": "Gram",
         "dragDropEnabled": false,
         "width": 1200,
         "height": 800,

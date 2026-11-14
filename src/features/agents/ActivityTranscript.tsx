@@ -632,7 +632,7 @@ const MARKDOWN: Components = {
 };
 
 /** Agent replies are Markdown; remote images stay unloaded. */
-function Reply({ text }: { text: string }) {
+export function Reply({ text }: { text: string }) {
   const bounded = useMemo(
     () => text.length <= MAX_MARKDOWN_LENGTH && !scanMarkdown(text).tooDeep,
     [text],

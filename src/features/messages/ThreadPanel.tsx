@@ -64,6 +64,7 @@ import type { PageNavigation } from "../navigation/service";
 import { messageViewKey } from "./view-key";
 import { useKnownAgentPubkeys } from "../agents/use-known";
 import { JumpToLatestButton } from "./JumpToLatestButton";
+import { ThreadFlowRows } from "./ThreadFlowRows";
 import { correctScrollTop } from "./scroll-correction";
 
 export type ThreadPanelProps = {
@@ -1941,7 +1942,14 @@ function ThreadMessages({
                 </Button>
               </li>
             )}
-            {renderReplies(undefined)}
+            <ThreadFlowRows
+              extensions={extensions}
+              session={session}
+              channelId={channelId}
+              rootId={rootId}
+              messages={tree.children.get(undefined) ?? []}
+              rows={renderReplies(undefined)}
+            />
           </ol>
           {!preview && !positioning && composerRoot && (
             <AgentConnectionSetup

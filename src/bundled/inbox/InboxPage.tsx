@@ -1,3 +1,4 @@
+import { useThreadNames } from "../channels/useChannelTabState";
 import {
   type ReactNode,
   useCallback,
@@ -448,6 +449,7 @@ function InboxList({
       session.agentChoices.ensure();
     }
   }, [session, list.status, list.asOf, refreshAfterRoster]);
+  const threadName = useThreadNames(session);
   const items = inbox.items;
   const activityItems = items
     .map((item) => (activity === "mentions" ? item.mention : item))
@@ -1153,7 +1155,13 @@ function InboxList({
                 const channel = list.channels.find(
                   (candidate) => candidate.id === item.channelId,
                 );
-                const identity = rowIdentity(item, channel, profiles, name);
+                const identity = rowIdentity(
+                  item,
+                  channel,
+                  profiles,
+                  name,
+                  threadName(item.channelId, item.rootId ?? item.messageId),
+                );
                 const { sender, context } = identity;
                 const unread = hasUnread(item);
                 const readable = unread && canRead;

@@ -105,9 +105,7 @@ fn requirement() -> Result<String, i32> {
         .ok()
         .flatten()
         .ok_or(UNAVAILABLE)?;
-    let path = user
-        .dir
-        .join(".buzz-foundation/dev-credential-helper/requirement");
+    let path = user.dir.join(".gram/dev-credential-helper/requirement");
     let metadata = std::fs::symlink_metadata(&path).map_err(|_| UNAVAILABLE)?;
     if !metadata.is_file()
         || metadata.uid() != user.uid.as_raw()

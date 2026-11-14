@@ -16,8 +16,10 @@ export function ActivityStepPreview({
   const label = activityStepLabel(text);
   return (
     <span className={styles.stepPreview}>
-      {icon}
-      <TypingDots size="message" state={state} />
+      <span className={styles.lead}>
+        {icon}
+        <TypingDots size="message" state={state} />
+      </span>
       {label && (
         <span className={styles.stepText}>
           <ShimmerText active={state === "working"}>{label}</ShimmerText>
@@ -31,8 +33,8 @@ export function ActivityStepPreview({
 export function activityStepLabel(text?: string): string {
   const characters = Array.from(text?.replace(/\s+/g, " ").trim() ?? "");
   const label =
-    characters.length > 280
-      ? `${characters.slice(0, 279).join("")}…`
+    characters.length > 400
+      ? `${characters.slice(0, 399).join("")}…`
       : characters.join("");
   return label === "Sending a message" ? "" : label;
 }
