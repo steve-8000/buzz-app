@@ -173,6 +173,28 @@ describe("harnessKit.conversation", () => {
     ).toMatchObject({ key: channel, topLevel: true });
   });
 
+  it("opens independent agent threads inside a DM or Solo conversation", async () => {
+    const first = message("1", "first");
+    const second = message("2", "second");
+    for (const type of ["dm", "solo"] as const) {
+      const { kit, delivery } = setup({ type });
+      const open = (event: RelayEvent) =>
+        kit.conversation(delivery({ type: "mention", event }), "thread", {
+          separateThreads: true,
+        });
+      expect(await open(first)).toMatchObject({
+        key: `${channel}/${first.id}`,
+        root: first.id,
+        topLevel: false,
+      });
+      expect(await open(second)).toMatchObject({
+        key: `${channel}/${second.id}`,
+        root: second.id,
+        topLevel: false,
+      });
+    }
+  });
+
   it("refuses a mention from anyone else, and triggers that are not its", async () => {
     const { kit, delivery } = setup();
     const event = message("2", "@Ampy rm -rf", { pubkey: mallory });

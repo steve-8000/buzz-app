@@ -21,6 +21,7 @@ type Reading = {
    * DM reads stop before unread messages it does not show. */
   rootId?: string | undefined;
   scroller: RefObject<HTMLElement | null>;
+  acceptsMessageId?: ((id: string) => boolean) | undefined;
   settled: RefObject<boolean>;
   /** True while the list shows its latest row in place of the reader's own,
    * still loading: the rows shown are read, but that bottom is not caught up. */
@@ -45,6 +46,7 @@ export function useReading({
   latestMessageId,
   rootId,
   scroller,
+  acceptsMessageId,
   settled,
   restoring,
   enabled = true,
@@ -53,6 +55,9 @@ export function useReading({
   // Read at measurement time: a new latest message mutates the list, which
   // already remeasures in the next frame, so it must not restart observation.
   const latestId = useEffectEvent(() => latestMessageId);
+  const acceptsId = useEffectEvent(
+    (id: string) => acceptsMessageId?.(id) ?? true,
+  );
   useEffect(() => {
     if (!enabled || !scroller.current) return;
     const element: HTMLElement = scroller.current;
@@ -138,7 +143,9 @@ export function useReading({
       const viewport = element.getBoundingClientRect();
       return [...element.querySelectorAll<HTMLElement>("[data-message-id]")]
         .flatMap((row) =>
-          row.dataset.messageId && shown(row, viewport)
+          row.dataset.messageId &&
+          acceptsId(row.dataset.messageId) &&
+          shown(row, viewport)
             ? [row.dataset.messageId]
             : [],
         )

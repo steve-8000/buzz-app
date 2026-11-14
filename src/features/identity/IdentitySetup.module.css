@@ -49,8 +49,7 @@
   width: min(100%, 23rem);
 }
 
-.wordmark img,
-.wordmark canvas {
+.wordmark svg {
   display: block;
   width: 100%;
   height: auto;
@@ -100,29 +99,12 @@
 }
 
 .logoLayers {
-  position: relative;
   display: block;
-}
-.logoLayers canvas {
-  position: absolute;
-  inset: 0;
-}
-.logoLayers[data-animated="true"] img {
-  visibility: hidden;
 }
 
 @media (forced-colors: active) {
   .landing {
     background: Canvas;
-  }
-  /* Paint the artwork's shape in the palette's text color, whatever the theme. */
-  .logoLayers {
-    forced-color-adjust: none;
-    background: CanvasText;
-    mask: url("/buzz-wordmark.png") center / 100% 100% no-repeat;
-  }
-  .logoLayers img {
-    visibility: hidden;
   }
 }
 

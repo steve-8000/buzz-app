@@ -1,4 +1,4 @@
-//! One agent-only Keychain item; session caching never couples human custody.
+//! One agent-only local secret; session caching never couples human custody.
 use super::{Failure, Keychain, SecretMap, MAX_BLOB, PREVIOUS_SERVICE, SERVICE};
 use crate::{Result, Secret};
 use std::sync::Mutex;

@@ -172,7 +172,7 @@ export function settingsSections(
       : []),
     {
       id: "app",
-      label: "Buzz",
+      label: "Gram",
       sections: [
         identity,
         // Paired command-line tools exist only in the desktop app.

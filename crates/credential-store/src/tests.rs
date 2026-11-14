@@ -289,14 +289,14 @@ fn home_child() {
 #[test]
 fn human_identity_slots_stay_separate() {
     assert_eq!(HUMAN_ACCOUNT, "human");
-    assert_eq!(human_service(true), "xyz.block.buzz.desktop.identity.debug");
-    assert_eq!(human_service(false), "xyz.block.buzz.desktop.identity");
+    assert_eq!(human_service(true), "one.clab.gram.identity.debug");
+    assert_eq!(human_service(false), "one.clab.gram.identity");
     assert_eq!(HUMAN_SERVICE, human_service(cfg!(debug_assertions)));
     assert_eq!(
         human_store(true),
-        "dev.local.buzz.foundation.identity.debug"
+        "one.clab.gram.identity-store.debug"
     );
-    assert_eq!(human_store(false), "dev.local.buzz.foundation.identity");
+    assert_eq!(human_store(false), "one.clab.gram.identity-store");
     assert_eq!(HUMAN_STORE, human_store(cfg!(debug_assertions)));
     assert_eq!(PREVIOUS_HUMAN_SERVICE, HUMAN_STORE);
 }
@@ -402,8 +402,8 @@ fn a_me_build_reads_the_release_key_and_falls_back_only_when_it_is_absent() {
     fn run(release: bool, current: Result<&[u8]>, previous: Result<&[u8]>) -> Result<Vec<u8>> {
         let read = |service: &str| {
             match service {
-                "xyz.block.buzz.desktop.identity" => current,
-                "dev.local.buzz.foundation.identity" => previous,
+                "one.clab.gram.identity" => current,
+                "one.clab.gram.identity-store" => previous,
                 _ => panic!("only release services are read: {service}"),
             }
             .map(|value| Zeroizing::new(value.to_vec()))
@@ -435,4 +435,58 @@ fn a_me_build_reads_the_release_key_and_falls_back_only_when_it_is_absent() {
         assert_eq!(run(true, Err(error), Ok(b"old")), Err(error));
         assert_eq!(run(true, absent, Err(error)), Err(error));
     }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn local_secrets_are_private_and_create_only() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("secrets");
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Absent));
+    file_store::write(&root, SERVICE, ACCOUNT, b"first", true).unwrap();
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT).unwrap().as_slice(), b"first");
+    assert_eq!(
+        file_store::write(&root, SERVICE, ACCOUNT, b"second", true),
+        Err(Error::Occupied)
+    );
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT).unwrap().as_slice(), b"first");
+    assert_eq!(fs::metadata(&root).unwrap().permissions().mode() & 0o777, 0o700);
+    let path = file_store::path(&root, SERVICE, ACCOUNT);
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+    assert_eq!(file_store::read(&root, SERVICE, "other"), Err(Error::Absent));
+    file_store::write(&root, SERVICE, ACCOUNT, b"updated", false).unwrap();
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT).unwrap().as_slice(), b"updated");
+    file_store::remove(&root, SERVICE, ACCOUNT).unwrap();
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Absent));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn local_secrets_refuse_loose_permissions_and_links() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("secrets");
+    file_store::write(&root, SERVICE, ACCOUNT, b"original", true).unwrap();
+    let path = file_store::path(&root, SERVICE, ACCOUNT);
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Denied));
+    assert_eq!(
+        file_store::write(&root, SERVICE, ACCOUNT, b"replacement", false),
+        Err(Error::Denied)
+    );
+    assert_eq!(fs::read(&path).unwrap(), b"original");
+    fs::remove_file(&path).unwrap();
+    let outside = temp.path().join("outside");
+    fs::write(&outside, b"outside").unwrap();
+    symlink(&outside, &path).unwrap();
+    assert_eq!(file_store::read(&root, SERVICE, ACCOUNT), Err(Error::Denied));
+    assert_eq!(
+        file_store::write(&root, SERVICE, ACCOUNT, b"replacement", false),
+        Err(Error::Denied)
+    );
+    assert_eq!(file_store::remove(&root, SERVICE, ACCOUNT), Err(Error::Denied));
+    assert_eq!(fs::read(&outside).unwrap(), b"outside");
 }

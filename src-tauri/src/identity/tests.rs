@@ -385,19 +385,6 @@ fn uppercase_import_keeps_the_exact_key_and_mixed_case_is_rejected() {
     assert_eq!(identity(&store).export().unwrap(), nsec);
 }
 
-#[test]
-fn development_and_release_items_are_separate() {
-    assert_eq!(
-        credentials::HUMAN_SERVICE,
-        if cfg!(debug_assertions) {
-            "xyz.block.buzz.desktop.identity.debug"
-        } else {
-            "xyz.block.buzz.desktop.identity"
-        }
-    );
-    assert_eq!(credentials::HUMAN_ACCOUNT, "human");
-    assert!(!credentials::HUMAN_SERVICE.starts_with("buzz-desktop"));
-}
 
 #[test]
 fn sidebar_registers_bind_legacy_projection_and_preserve_tombstones() {

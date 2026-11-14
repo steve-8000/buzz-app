@@ -1,5 +1,3 @@
-#[path = "../crates/build_env.rs"]
-mod build_env;
 #[path = "src/build_resources.rs"]
 mod build_resources;
 #[path = "src/enterprise_adapter_url.rs"]
@@ -323,11 +321,7 @@ const FEDERATED_IDENTITY: &str = "BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG";
 fn configure_federated_identity() {
     println!("cargo:rerun-if-env-changed={FEDERATED_IDENTITY}");
     println!("cargo:rerun-if-env-changed=BUZZ_BUILDERLAB_URL");
-    println!("cargo:rerun-if-env-changed=BUZZ_DEV_VIEWER");
-    let local = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
-        .join("../.env.local");
-    println!("cargo:rerun-if-changed={}", local.display());
-    let servers = federated_identity_servers(&local, |key| std::env::var(key).ok());
+    let servers = federated_identity_servers(|key| std::env::var(key).ok());
     if !servers.is_empty() {
         println!(
             "cargo:rustc-env={FEDERATED_IDENTITY}={}",
@@ -336,15 +330,10 @@ fn configure_federated_identity() {
     }
 }
 
-/// The compiled sign-in servers. The Builderlab URL is read as the plugin
-/// manager reads it, .env.local included. A `tauri dev` run's pinned viewer
-/// is the frontend's development broker.
 fn federated_identity_servers(
-    local: &std::path::Path,
     env: impl Fn(&str) -> Option<String>,
 ) -> Vec<federated_identity_config::Config> {
     const BUILDERLAB_URL: &str = "BUZZ_BUILDERLAB_URL";
-    const DEV_VIEWER: &str = "BUZZ_DEV_VIEWER";
     let added = env(FEDERATED_IDENTITY);
     if added.as_deref().is_some_and(|raw| !raw.is_empty()) {
         for legacy in [
@@ -357,39 +346,20 @@ fn federated_identity_servers(
             }
         }
     }
-    let mut values = build_env::load(local, &[BUILDERLAB_URL, DEV_VIEWER], &env)
-        .unwrap_or_else(|error| panic!("{error}"));
-    let builderlab_url = values.remove(BUILDERLAB_URL);
-    let dev_viewer = federated_identity_config::dev_viewer(
-        values.remove(DEV_VIEWER),
-        env("DEP_TAURI_DEV").as_deref(),
-    );
-    federated_identity_config::compiled(
-        added.as_deref(),
-        builderlab_url.as_deref(),
-        dev_viewer.as_deref(),
-    )
-    .unwrap_or_else(|error| panic!("{error}"))
+    federated_identity_config::compiled(added.as_deref())
+        .unwrap_or_else(|error| panic!("{error}"))
 }
 
 #[cfg(test)]
 mod tests {
-    /// Tauri's metadata in each build mode: `tauri dev` builds without
-    /// `custom-protocol`; `tauri build`, `--debug` or not, builds with it.
     #[test]
-    fn pinned_viewer_turns_off_nip_fi_only_in_tauri_dev() {
-        let directory = tempfile::tempdir().unwrap();
-        let local = directory.path().join(".env.local");
-        std::fs::write(&local, "BUZZ_DEV_VIEWER=viewer.example\n").unwrap();
-        for (mode, tauri_dev, fi) in [
-            ("dev", "true", &[][..]),
-            ("packaged debug", "false", &["bb-public"][..]),
-            ("packaged release", "false", &["bb-public"][..]),
-        ] {
-            let env = |key: &str| (key == "DEP_TAURI_DEV").then(|| tauri_dev.to_string());
-            let servers = super::federated_identity_servers(&local, env);
-            let ids: Vec<_> = servers.iter().map(|config| config.id.as_str()).collect();
-            assert_eq!(ids, fi, "{mode}");
-        }
+    fn only_explicit_sign_in_servers_are_compiled() {
+        assert!(super::federated_identity_servers(|_| None).is_empty());
+        let descriptor = r#"{"version":1,"id":"self-hosted","identityOrigin":"https://identity.example","communityHosts":["relay.example"],"adapterBase":"https://identity.example/api","apiBasePath":"/api/"}"#;
+        let servers = super::federated_identity_servers(|key| {
+            (key == super::FEDERATED_IDENTITY).then(|| descriptor.to_owned())
+        });
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].id, "self-hosted");
     }
 }

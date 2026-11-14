@@ -1,0 +1,12 @@
+{
+  "name": "@gram/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": ["index.mjs"],
+  "dependencies": {
+    "@getpaseo/server": "0.16.0-beta.2",
+    "@getpaseo/cli": "0.16.0-beta.2",
+    "pino": "^10.2.0"
+  }
+}

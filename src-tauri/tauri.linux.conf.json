@@ -1,9 +1,9 @@
 {
-  "productName": "Buzz Foundation",
+  "productName": "Gram",
   "app": {
     "windows": [
       {
-        "title": "Buzz",
+        "title": "Gram",
         "dragDropEnabled": false,
         "width": 1200,
         "height": 800,

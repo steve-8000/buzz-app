@@ -72,6 +72,7 @@ export type HarnessKit = Readonly<{
   conversation(
     delivery: Delivery,
     scope: HarnessScope,
+    options?: { separateThreads?: boolean },
   ): Promise<HarnessConversation | undefined>;
   /** Buzz's system prompt for the agent: the base prompt, its session model,
    * `instructions`, its teams, its `core` memory and repositories folder.
@@ -223,6 +224,7 @@ export function harnessKit(sources: Sources): HarnessKit {
     async conversation(
       { trigger, agent, channelId, signal }: Delivery,
       scope: HarnessScope,
+      options?: { separateThreads?: boolean },
     ) {
       if (
         trigger.type !== "mention" &&
@@ -260,12 +262,13 @@ export function harnessKit(sources: Sources): HarnessKit {
         channel,
         signal,
       );
-      const topLevel = solo || wake?.topLevel === true;
+      const separateThreads = options?.separateThreads && trigger.type === "mention";
+      const topLevel = !separateThreads && (solo || wake?.topLevel === true);
       if (wake && !wakeLands(wake, topLevel)) return undefined;
       const found = summary(agent.key, channel);
       const dm = found?.channelType === "dm";
       const root = threadReference(event)?.rootId ?? event.id;
-      const whole = topLevel || dm || scope === "channel";
+      const whole = !separateThreads && (topLevel || dm || scope === "channel");
       const conversation: HarnessConversation = Object.freeze({
         key: whole ? channel : `${channel}/${root}`,
         channel,

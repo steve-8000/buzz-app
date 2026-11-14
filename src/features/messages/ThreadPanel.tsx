@@ -65,6 +65,7 @@ import { messageViewKey } from "./view-key";
 import { useKnownAgentPubkeys } from "../agents/use-known";
 import { JumpToLatestButton } from "./JumpToLatestButton";
 import { correctScrollTop } from "./scroll-correction";
+import { PaseoThread, useThreadBindings } from "../agent-chat/PaseoThread";
 
 export type ThreadPanelProps = {
   extensions?: ConversationExtensions | undefined;
@@ -426,6 +427,7 @@ function OwnedThreadPanel({
   revealFocus,
   requireReadyRoot,
   onDraftSaved,
+  close,
   onSend,
 }: ThreadPanelProps) {
   const [view, setView] = useState<ThreadView>();
@@ -500,6 +502,7 @@ function OwnedThreadPanel({
       revealFocus={revealFocus}
       requireReadyRoot={requireReadyRoot}
       onDraftSaved={onDraftSaved}
+      close={close}
       onSend={onSend}
       onOpenLink={onOpenLink}
       onOpenMediaReview={onOpenMediaReview}
@@ -535,6 +538,7 @@ function ThreadMessages({
   onSend,
   selectionFailure,
   onResolvedRoot,
+  close,
   routePending,
 }: {
   onResolvedRoot?: ThreadPanelProps["onResolvedRoot"];
@@ -564,6 +568,7 @@ function ThreadMessages({
   revealRequest?: number | undefined;
   requireReadyRoot?: boolean | undefined;
   onDraftSaved?: ThreadPanelProps["onDraftSaved"];
+  close?: ThreadPanelProps["close"];
   onSend?: ThreadPanelProps["onSend"];
   navigation?: PageNavigation | undefined;
   onOpenLink(url: string, origin?: MessageLinkOrigin): boolean;
@@ -603,6 +608,13 @@ function ThreadMessages({
     view.subscribe,
     view.snapshot,
     view.snapshot,
+  );
+  const agentBindings = useThreadBindings(
+    session,
+    channelId,
+    snapshot.root,
+    snapshot.replies,
+    !!disabled || preview,
   );
   const threadChannels = useMemo(() => new Set([channelId]), [channelId]);
   const activitySnapshot = useChannelActivitySnapshot(
@@ -1764,6 +1776,22 @@ function ThreadMessages({
       void view.loadMore();
     } else void view.refresh();
   };
+  if (agentBindings.length > 0 && snapshot.root) {
+    return (
+      <MessageEditScope>
+        <PaseoThread
+          key={`${session.scope}:${channelId}:${snapshot.root.id}`}
+          bindings={agentBindings}
+          root={snapshot.root}
+          replies={snapshot.replies}
+          session={session}
+          channelId={channelId}
+          active={active !== false}
+          close={close}
+        />
+      </MessageEditScope>
+    );
+  }
   return (
     <MessageEditScope>
       <Reading

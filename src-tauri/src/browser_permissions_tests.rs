@@ -321,6 +321,33 @@ fn native_command_permissions_isolate_webviews() {
     )
     .is_ok());
 
+    let resource = serde_json::json!({
+        "directory": 12,
+        "path": "gram-runtime/index.mjs"
+    });
+    invoke_with_body(
+        main.as_ref(),
+        "plugin:path|resolve_directory",
+        local_origin,
+        resource.clone(),
+    )
+    .unwrap_or_else(|error| panic!("main must resolve a runtime path: {error}"));
+    for (webview, origin) in [
+        (&guest, local_origin),
+        (&huddle, local_origin),
+        (&main, "https://example.org"),
+    ] {
+        assert!(
+            invoke_with_body(
+                webview.as_ref(),
+                "plugin:path|resolve_directory",
+                origin,
+                resource.clone()
+            )
+            .is_err()
+        );
+    }
+
     // Window fallback belongs to trusted app UI, never a sibling or remote page.
     for origin in [local_origin, "https://example.org", "http://localhost:1430"] {
         assert!(invoke(guest.as_ref(), "plugin:window|close", origin).is_err());

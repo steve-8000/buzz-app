@@ -14,6 +14,7 @@ import { useRejectUnclaimedDrops } from "./features/messages/use-file-drop";
 import { TooltipProvider } from "./shared/design-system/ui/Tooltip";
 import { clearReactDevMeasures } from "./features/developer/react-dev-timing";
 import { showStartupFailure, startupHandedToReact } from "./app/launch";
+import { PaseoEnvironment } from "virtual:gram-paseo-chat";
 
 // React dev builds otherwise fill the User Timing buffer without limit.
 if (import.meta.env.DEV) clearReactDevMeasures();
@@ -40,9 +41,11 @@ void loadAgentStorage().finally(() => {
       useKeyboardFocusVisibility();
       useRejectUnclaimedDrops();
       return (
-        <TooltipProvider>
-          <App services={services} />
-        </TooltipProvider>
+        <PaseoEnvironment>
+          <TooltipProvider>
+            <App services={services} />
+          </TooltipProvider>
+        </PaseoEnvironment>
       );
     }
     root.render(

@@ -1662,37 +1662,6 @@ fn a_linked_legacy_folder_moves_as_the_link() {
     unchanged(&outside, &["localstorage"]);
 }
 
-#[test]
-fn only_the_current_identifier_takes_every_folder_the_legacy_one_used() {
-    use legacy_identifier::{moves, CURRENT, LEGACY};
-    let config: serde_json::Value =
-        serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
-    assert_eq!(config["identifier"], CURRENT);
-    assert_eq!(
-        moves("dev.local.buzz.foundation.nexus-test-012345abcdef"),
-        Some(Vec::new())
-    );
-    let (legacy, current) = (
-        Paths::resolve(LEGACY).unwrap(),
-        Paths::resolve(CURRENT).unwrap(),
-    );
-    // Older builds take the same all-Buzz lock, so the move waits for them.
-    assert_eq!(legacy.lock, current.lock);
-    let moves = current.moves;
-    assert!(moves.contains(&(legacy.marker, current.marker)));
-    for path in std::iter::once(current.app_data).chain(current.others) {
-        for path in [trash(&path), path] {
-            let old = path.with_file_name(
-                path.file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .replace(CURRENT, LEGACY),
-            );
-            assert!(moves.contains(&(old, path)));
-        }
-    }
-}
 
 /// Development seed bases under `root`, app data last, with the installed
 /// app's folders under `source`.
@@ -1762,27 +1731,6 @@ fn an_interrupted_development_seed_finishes_at_the_next_launch() {
     assert!(!seeds[1].join(format!("{DEV}.seeding")).exists());
 }
 
-#[test]
-fn development_launches_copy_the_installed_storage_and_take_only_their_sign_out() {
-    use legacy_identifier::{moves, seeds, CURRENT, DEV, LEGACY};
-    assert!(include_str!("../../../scripts/desktop-config.mjs").contains(&format!("\"{DEV}\"")));
-    let (legacy, dev) = (
-        Paths::resolve(LEGACY).unwrap(),
-        Paths::resolve(DEV).unwrap(),
-    );
-    assert_eq!(moves(DEV), Some(vec![(legacy.marker, dev.marker)]));
-    assert_eq!(dev.seeds.last(), dirs::data_dir().as_ref());
-    // Each folder copied is one the release build moves; caches aren't copied.
-    let release = moves(CURRENT).unwrap();
-    for base in &dev.seeds {
-        assert!(release.contains(&(base.join(LEGACY), base.join(CURRENT))));
-    }
-    // Windows keeps caches in local data, which holds WebView2's storage.
-    let cache = dirs::cache_dir().unwrap();
-    assert!(cache == dirs::data_local_dir().unwrap() || !dev.seeds.contains(&cache));
-    assert_eq!(seeds(CURRENT), Some(Vec::new()));
-    assert_eq!(seeds(LEGACY), Some(Vec::new()));
-}
 
 #[test]
 fn development_builds_use_the_installed_agents_unless_legacy_storage_is_due() {

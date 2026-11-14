@@ -1,13 +1,15 @@
 //! Credential primitives shared by human and agent identity owners.
-//! Password encoding matches keyring's native Windows UTF-16 / Linux UTF-8 format.
-//! Create-only writes, copies and deletes are serialized across cooperating app processes, not profiles.
-//! Locks contain no secrets; missing/locked/broken secure storage never falls back.
+//! On macOS, credentials are private local files rather than Keychain items.
+//! Create-only writes, copies and deletes are serialized across cooperating app processes.
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::path::Path;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
 use zeroize::Zeroize;
 use zeroize::Zeroizing;
+
+#[cfg(target_os = "macos")]
+mod file_store;
 
 #[cfg(all(not(test), target_os = "macos", debug_assertions))]
 mod dev_helper;
@@ -36,17 +38,17 @@ pub const HUMAN_STORE: &str = human_store(cfg!(debug_assertions));
 
 pub const fn human_service(debug: bool) -> &'static str {
     if debug {
-        "xyz.block.buzz.desktop.identity.debug"
+        "one.clab.gram.identity.debug"
     } else {
-        "xyz.block.buzz.desktop.identity"
+        "one.clab.gram.identity"
     }
 }
 
 pub const fn human_store(debug: bool) -> &'static str {
     if debug {
-        "dev.local.buzz.foundation.identity.debug"
+        "one.clab.gram.identity-store.debug"
     } else {
-        "dev.local.buzz.foundation.identity"
+        "one.clab.gram.identity-store"
     }
 }
 
@@ -118,7 +120,7 @@ fn lock_root() -> Result<std::path::PathBuf> {
     #[cfg(windows)]
     let home = dirs::home_dir(); // Windows Known Folder API, not environment.
     home.filter(|path| path.is_absolute())
-        .map(|path| path.join(".buzz-foundation/credential-locks"))
+        .map(|path| path.join(".gram/credential-locks"))
         .ok_or(Error::Unavailable)
 }
 
@@ -350,9 +352,7 @@ pub fn read_own_human() -> Result<Zeroizing<Vec<u8>>> {
     .ok_or(Error::Absent)
 }
 
-/// Read the human identity without copying it: under the current service, else
-/// the one from before 1.0. For tools other than the desktop app, since a
-/// Keychain item trusts only the binary that created it.
+/// Read the human identity without copying it: current service, then previous.
 #[cfg(not(test))]
 pub fn find_human() -> Result<Zeroizing<Vec<u8>>> {
     match read(HUMAN_SERVICE, HUMAN_ACCOUNT) {
@@ -367,87 +367,47 @@ pub fn read_previous_human() -> Result<Zeroizing<Vec<u8>>> {
     read(PREVIOUS_HUMAN_SERVICE, HUMAN_ACCOUNT)
 }
 
-/// Read an exact service/account from the default Keychain, which `add` writes.
+/// Read an exact service/account from the local secret store.
 #[cfg(all(not(test), target_os = "macos"))]
 pub fn read(service: &str, account: &str) -> Result<Zeroizing<Vec<u8>>> {
     #[cfg(debug_assertions)]
     if let Some(result) = dev_item("read", service, account, &[]) {
         return result;
     }
-    use security_framework::os::macos::keychain::SecKeychain;
-    SecKeychain::default()
-        .map_err(mac_error)?
-        .find_generic_password(service, account)
-        .map(|(password, _)| Zeroizing::new(password.to_vec()))
-        .map_err(mac_error)
+    file_store::read(&file_store::root()?, service, account)
 }
 
-/// Add a credential; Keychain refuses to replace a saved one.
+/// Add a credential without replacing an existing one.
 #[cfg(all(not(test), target_os = "macos"))]
 pub fn add(service: &str, account: &str, value: &[u8]) -> Result<()> {
+    let _lock = acquire(&lock_root()?, service, account)?;
     #[cfg(debug_assertions)]
     if let Some(result) = dev_item("add", service, account, value) {
         return result.map(|_| ());
     }
-    use security_framework::os::macos::keychain::SecKeychain;
-    SecKeychain::default()
-        .map_err(mac_error)?
-        .add_generic_password(service, account, value)
-        .map_err(mac_error)
+    file_store::write(&file_store::root()?, service, account, value, true)
 }
 
-/// Write a credential whether or not one is saved, updating a saved item in
-/// place so a failed write keeps it. For settings, never for identities.
+/// Replace a mutable credential atomically.
 #[cfg(all(not(test), target_os = "macos"))]
 pub fn replace(service: &str, account: &str, value: &[u8]) -> Result<()> {
-    use security_framework::os::macos::keychain::SecKeychain;
     let _lock = acquire(&lock_root()?, service, account)?;
     #[cfg(debug_assertions)]
     if let Some(result) = dev_item("replace", service, account, value) {
         return result.map(|_| ());
     }
-    let keychain = SecKeychain::default().map_err(mac_error)?;
-    match keychain.find_generic_password(service, account) {
-        Ok((_, mut item)) => item.set_password(value).map_err(mac_error),
-        Err(error) if mac_error(error) == Error::Absent => keychain
-            .add_generic_password(service, account, value)
-            .map_err(mac_error),
-        Err(error) => Err(mac_error(error)),
-    }
+    file_store::write(&file_store::root()?, service, account, value, false)
 }
 
-/// Delete only the exact credential, under the same lock as [`copy`], and
-/// confirm it is gone: Keychain's delete reports no failure.
+/// Delete only the exact local credential.
 #[cfg(all(not(test), target_os = "macos"))]
 pub fn delete(service: &str, account: &str) -> Result<()> {
-    use security_framework::os::macos::keychain::SecKeychain;
     let _lock = acquire(&lock_root()?, service, account)?;
     #[cfg(debug_assertions)]
     if let Some(result) = dev_item("delete", service, account, &[]) {
         return result.map(|_| ());
     }
-    let keychain = SecKeychain::default().map_err(mac_error)?;
-    let (_, item) = keychain
-        .find_generic_password(service, account)
-        .map_err(mac_error)?;
-    item.delete();
-    match keychain.find_generic_password(service, account) {
-        Ok(_) => Err(Error::Unavailable),
-        Err(error) => match mac_error(error) {
-            Error::Absent => Ok(()),
-            error => Err(error),
-        },
-    }
-}
-
-#[cfg(all(not(test), target_os = "macos"))]
-fn mac_error(error: security_framework::base::Error) -> Error {
-    match error.code() {
-        -25300 => Error::Absent,
-        -25299 => Error::Occupied,
-        -128 | -25293 | -25308 => Error::Denied,
-        _ => Error::Unavailable,
-    }
+    file_store::remove(&file_store::root()?, service, account)
 }
 
 #[cfg(all(
@@ -473,7 +433,7 @@ mod tests;
 /// Erase an indexed session without reading its contents or knowing its schema.
 #[cfg(not(test))]
 pub fn delete_session(service: &str, account: &str) -> Result<()> {
-    if !service.starts_with("xyz.block.buzz.desktop.federated-session") {
+    if !service.starts_with("one.clab.gram.federated-session") {
         return Err(Error::Denied);
     }
     let _lock = acquire(&lock_root()?, service, account)?;
@@ -482,8 +442,7 @@ pub fn delete_session(service: &str, account: &str) -> Result<()> {
         return result.map(|_| ());
     }
     #[cfg(target_os = "macos")]
-    return security_framework::passwords::delete_generic_password(service, account)
-        .map_err(mac_error);
+    return file_store::remove(&file_store::root()?, service, account);
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     return entry(service, account)?.delete();
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -499,7 +458,7 @@ pub fn compare_session(
     expected: Option<&[u8]>,
     replacement: Option<&[u8]>,
 ) -> Result<()> {
-    if !service.starts_with("xyz.block.buzz.desktop.federated-session") {
+    if !service.starts_with("one.clab.gram.federated-session") {
         return Err(Error::Denied);
     }
     let _lock = acquire(&lock_root()?, service, account)?;
@@ -550,12 +509,7 @@ pub fn read_session(service: &str, account: &str) -> Result<Zeroizing<Vec<u8>>> 
     if let Some(result) = dev_item("read", service, account, &[]) {
         return result;
     }
-    use security_framework::os::macos::keychain::SecKeychain;
-    SecKeychain::default()
-        .map_err(mac_error)?
-        .find_generic_password(service, account)
-        .map(|(password, _)| Zeroizing::new(password.to_vec()))
-        .map_err(mac_error)
+    file_store::read(&file_store::root()?, service, account)
 }
 
 #[cfg(all(not(test), target_os = "macos"))]
@@ -572,24 +526,12 @@ fn session_write(service: &str, account: &str, value: Option<&[u8]>) -> Result<(
             result => result.map(|_| ()),
         };
     }
-    use security_framework::os::macos::keychain::SecKeychain;
-    let keychain = SecKeychain::default().map_err(mac_error)?;
-    match (keychain.find_generic_password(service, account), value) {
-        (Ok((_, mut item)), Some(value)) => item.set_password(value).map_err(mac_error),
-        (Err(error), Some(value)) if mac_error(error) == Error::Absent => keychain
-            .add_generic_password(service, account, value)
-            .map(|_| ())
-            .map_err(mac_error),
-        (Ok((_, item)), None) => {
-            item.delete();
-            match read_session(service, account) {
-                Err(Error::Absent) => Ok(()),
-                Ok(_) => Err(Error::Unavailable),
-                Err(error) => Err(error),
-            }
-        }
-        (Err(error), None) if mac_error(error) == Error::Absent => Ok(()),
-        (Err(error), _) => Err(mac_error(error)),
+    match value {
+        Some(value) => file_store::write(&file_store::root()?, service, account, value, false),
+        None => match file_store::remove(&file_store::root()?, service, account) {
+            Err(Error::Absent) => Ok(()),
+            result => result,
+        },
     }
 }
 

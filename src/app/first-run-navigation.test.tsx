@@ -9,10 +9,7 @@ import { createServices, type AppServices } from "./services";
 import { keypair, signed } from "../features/relay/testing";
 import { communityDestination } from "../features/communities/destination";
 
-// The startup `home` visit is created inside createServices(), before React
-// renders. On a native first run `Welcome` hides `ConnectedApp`, the only
-// presenter, for far longer than the visit deadline; that deadline runs only
-// while a presenter is attached, so the gate lifting presents the visit as-is.
+// The startup visit waits until the local identity gate lifts.
 // The key the gate waits for already holds one community on this device, as
 // every setup lane leaves it (joined, restored or handed off), so the channels
 // page is what presents.
@@ -147,8 +144,7 @@ function relayAnswer(args: unknown) {
 }
 
 const notice = () => screen.queryByText("This destination couldn’t open");
-/** The first-run landing, which a build without Builderlab still shows. */
-const landing = () => screen.queryByRole("button", { name: "Other options" });
+const landing = () => screen.queryByRole("button", { name: "Create a new identity" });
 async function firstRun() {
   const current = createServices();
   services = current;

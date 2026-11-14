@@ -41,7 +41,7 @@ export function WelcomeBack({
         <p className="mt-2 text-body text-subtle">
           {onDevice
             ? name
-              ? "Continue with your Buzz profile."
+              ? "Continue with your Gram profile."
               : "We found the key to your account."
             : onRestore
               ? "Your account’s key isn’t on this device. Try restoring it from a backup, or enter its private key."

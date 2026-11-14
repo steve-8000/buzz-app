@@ -21,7 +21,7 @@ import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 // The code identifier `dev-sign-run.sh` signs debug builds with.
-export const IDENTIFIER = "xyz.block.buzz.desktop.dev";
+export const IDENTIFIER = "one.clab.gram.dev";
 const CERTIFICATE = "Buzz Dev Signing";
 
 function run(command, args, options = {}) {
@@ -152,7 +152,7 @@ function createIdentity() {
 export function prepareCredentialHelper(root) {
   const directory = join(
     userInfo().homedir,
-    ".buzz-foundation/dev-credential-helper",
+    ".gram/dev-credential-helper",
   );
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   chmodSync(directory, 0o700);

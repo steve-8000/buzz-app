@@ -48,7 +48,7 @@ int main(void) {
     std::env::set_var("BUZZ_DEV_CREDENTIAL_HELPER", &closing_helper);
     let reply = dev_item(
         "read",
-        "xyz.block.buzz.desktop.agents",
+        "one.clab.gram.agents",
         "agent-bundle-v1",
         &[],
     )

@@ -1,8 +1,8 @@
 {
   "id": "buzz.omp",
-  "name": "Oh My Pi",
+  "name": "Gram Agent",
   "apiVersion": 1,
-  "description": "Run Oh My Pi coding agents in Buzz: one git worktree and one omp session per thread.",
+  "description": "Paseo-powered agent chats inside Gram threads, with private tool output and approvals.",
   "discovery": {
     "category": "agents",
     "tags": ["code", "coding-agents"]
@@ -10,9 +10,10 @@
   "host": {
     "processes": [
       {
-        "id": "omp",
-        "program": "omp",
-        "args": ["--mode", "rpc-ui"]
+        "id": "runtime",
+        "program": "gram-node",
+        "bundled": true,
+        "args": []
       },
       {
         "id": "git",

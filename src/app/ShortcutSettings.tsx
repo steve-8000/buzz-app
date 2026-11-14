@@ -234,13 +234,13 @@ function useShortcutGroups({
   const groups: Group[] = [
     {
       id: "host",
-      label: "Buzz",
+      label: "Gram",
       sortKey: "",
       rows: host.map((shortcut) =>
         row(
           shortcut.id,
           shortcut,
-          "Buzz",
+          "Gram",
           desktop &&
             shortcut.binding.some((binding) =>
               includes(DESKTOP_CHORDS, binding),

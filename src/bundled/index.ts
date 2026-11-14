@@ -12,6 +12,7 @@ import huddlesManifest from "./huddles/manifest.json";
 import * as huddles from "./huddles";
 import builderlabManifest from "./builderlab/manifest.json";
 import * as builderlab from "./builderlab";
+import { nativeBuilderlab } from "./builderlab/session";
 import * as todos from "./todos";
 import diffsManifest from "./diffs/manifest.json";
 import * as diffs from "./diffs";
@@ -114,11 +115,15 @@ export const bundledPlugins: readonly BundledPlugin[] = [
     module: voiceNotes,
     enabledByDefault: true,
   },
-  {
-    manifest: { ...builderlabManifest, apiVersion: 1 },
-    module: builderlab,
-    enabledByDefault: true,
-  },
+  ...(nativeBuilderlab()
+    ? [
+        {
+          manifest: { ...builderlabManifest, apiVersion: 1 },
+          module: builderlab,
+          enabledByDefault: true,
+        } satisfies BundledPlugin,
+      ]
+    : []),
   {
     manifest: { ...draftsSentManifest, apiVersion: 1 },
     module: draftsSent,

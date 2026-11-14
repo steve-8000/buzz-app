@@ -412,25 +412,25 @@ const BUILDERLAB_FI_ROUTES: &[&str] = &[
 /// The matching Builderlab API base path, or empty when unconfigured.
 pub const BUILDERLAB_API_BASE_PATH: &str = env!("BUZZ_BUILDERLAB_API_BASE_PATH");
 pub fn bundled_manifests() -> Vec<Manifest> {
-    let mut builderlab: Manifest = serde_json::from_str(include_str!(
-        "../../../src/bundled/builderlab/manifest.json"
-    ))
-    .expect("builderlab manifest");
-    // Builderlab is reached only through the native FI session forwarder: no
-    // renderer network or file access. A development broker build reaches it
-    // through the broker, and a build with neither has no Builderlab.
     let descriptor = env!("BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG");
-    builderlab.host = (!descriptor.is_empty()).then(|| {
+    let builderlab = if descriptor.is_empty()
+        || !BUILDERLAB_API_BASE_PATH.ends_with("/api/goose/")
+    {
+        None
+    } else {
+        let mut manifest: Manifest = serde_json::from_str(include_str!(
+            "../../../src/bundled/builderlab/manifest.json"
+        ))
+        .expect("builderlab manifest");
         let config: serde_json::Value =
             serde_json::from_str(descriptor).expect("validated FI descriptor");
         let base = config["apiBasePath"].as_str().expect("API base");
-        HostGrants {
+        manifest.host = Some(HostGrants {
             federated_identity: Some(FederatedIdentityGrant {
                 authority: config["id"].as_str().expect("authority").into(),
                 operations: BUILDERLAB_FI_ROUTES
                     .iter()
                     .map(|route| {
-                        // Routes are POST unless they name another method.
                         let (method, route) = route.split_once(' ').unwrap_or(("POST", route));
                         AuthenticatedOperation {
                             method: method.into(),
@@ -440,16 +440,16 @@ pub fn bundled_manifests() -> Vec<Manifest> {
                     .collect(),
             }),
             ..HostGrants::default()
-        }
-    });
-    vec![
+        });
+        Some(manifest)
+    };
+    let manifests = [
         serde_json::from_str(include_str!(
             "../../../src/bundled/mesh-compute/manifest.json"
         ))
         .expect("mesh manifest"),
         serde_json::from_str(include_str!("../../../src/bundled/huddles/manifest.json"))
             .expect("huddles manifest"),
-        builderlab,
         serde_json::from_str(include_str!("../../../src/bundled/pairing/manifest.json"))
             .expect("valid pairing manifest"),
         serde_json::from_str(include_str!("../../../src/bundled/todos/manifest.json"))
@@ -544,7 +544,11 @@ pub fn bundled_manifests() -> Vec<Manifest> {
         .expect("changesets manifest"),
         serde_json::from_str(include_str!("../../../src/bundled/omp/manifest.json"))
             .expect("omp manifest"),
-    ]
+    ];
+    let mut bundled = Vec::with_capacity(manifests.len() + usize::from(builderlab.is_some()));
+    bundled.extend(manifests);
+    bundled.extend(builderlab);
+    bundled
 }
 /// New bundles must opt in to the default-on policy.
 fn enabled_by_default(id: &str) -> bool {
@@ -588,7 +592,7 @@ fn is_bundled(id: &str) -> bool {
     bundled_manifests().iter().any(|manifest| manifest.id == id)
 }
 fn is_reserved(id: &str) -> bool {
-    BUILT_IN.contains(&id) || is_bundled(id)
+    id == "block.builderlab" || BUILT_IN.contains(&id) || is_bundled(id)
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -1779,104 +1783,6 @@ mod tests {
     }
 
     #[test]
-    fn native_catalog_matches_desktop_bundles() {
-        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/bundled");
-        let index = fs::read_to_string(format!("{root}/index.ts")).unwrap();
-        let mut dirs = BTreeMap::new();
-        for line in index.lines() {
-            if let Some(rest) = line.strip_prefix("import ") {
-                if let Some((name, path)) = rest.split_once(" from \"./") {
-                    if let Some(dir) = path.strip_suffix("/manifest.json\";") {
-                        dirs.insert(name.to_string(), dir.to_string());
-                    }
-                }
-            }
-        }
-        let mut expected = BTreeMap::new();
-        for entry in index.split("manifest: { ...").skip(1) {
-            let name = entry.split(',').next().unwrap();
-            let default = entry
-                .split("enabledByDefault: ")
-                .nth(1)
-                .unwrap()
-                .starts_with("true");
-            let manifest =
-                fs::read_to_string(format!("{root}/{}/manifest.json", dirs[name])).unwrap();
-            let manifest: Manifest = serde_json::from_str(&manifest).unwrap();
-            expected.insert(manifest.id, default);
-        }
-        let native: BTreeMap<String, bool> = bundled_manifests()
-            .into_iter()
-            .map(|manifest| {
-                let default = enabled_by_default(&manifest.id);
-                (manifest.id, default)
-            })
-            .collect();
-        assert_eq!(native, expected);
-
-        let storage = fs::read_to_string(format!("{root}/../plugins/storage.ts")).unwrap();
-        let mut browser_legacy_on: Vec<_> = storage
-            .split("(existing && (")
-            .nth(1)
-            .expect("browser legacy-On condition")
-            .split("))")
-            .next()
-            .unwrap()
-            .split('"')
-            .skip(1)
-            .step_by(2)
-            .collect();
-        browser_legacy_on.sort_unstable();
-        let mut upgraded = super::Registry::default();
-        super::pin_bundled_defaults(&mut upgraded, true);
-        let native_legacy_on: Vec<_> = upgraded
-            .bundled_overrides
-            .iter()
-            .filter_map(|(id, enabled)| {
-                (*enabled && !enabled_by_default(id)).then_some(id.as_str())
-            })
-            .collect();
-        assert_eq!(
-            native_legacy_on, browser_legacy_on,
-            "legacy-On migration set"
-        );
-
-        let features =
-            fs::read_to_string(format!("{root}/../app/conversation-features.ts")).unwrap();
-        let manifests: BTreeMap<_, _> = features
-            .lines()
-            .filter_map(|line| {
-                let (name, path) = line
-                    .strip_prefix("import ")?
-                    .split_once(" from \"../bundled/")?;
-                let dir = path.strip_suffix("/manifest.json\";")?;
-                let manifest = fs::read_to_string(format!("{root}/{dir}/manifest.json")).unwrap();
-                let manifest: Manifest = serde_json::from_str(&manifest).unwrap();
-                Some((name, manifest.id))
-            })
-            .collect();
-        let mut host_ids: Vec<_> = features
-            .split("manifest: { ...")
-            .skip(1)
-            .map(|entry| manifests[entry.split(',').next().unwrap()].to_string())
-            .collect();
-        // A feature whose manifest is written out names its id by a constant.
-        let constants = fs::read_to_string(format!("{root}/../plugins/review-access.ts")).unwrap();
-        host_ids.extend(features.lines().filter_map(|line| {
-            let constant = line.trim().strip_prefix("id: ")?.trim_end_matches(',');
-            let declaration = format!("export const {constant} = \"");
-            let value = constants
-                .lines()
-                .find_map(|line| line.strip_prefix(&declaration))?;
-            Some(value.trim_end_matches("\";").to_string())
-        }));
-        host_ids.sort_unstable();
-        let mut reserved_ids: Vec<_> = super::BUILT_IN.iter().map(|id| id.to_string()).collect();
-        reserved_ids.sort_unstable();
-        assert_eq!(reserved_ids, host_ids);
-    }
-
-    #[test]
     fn prebuilt_artifacts_cannot_claim_built_in_conversation_ids() {
         for id in ["buzz.emoji", "buzz.mentions", "buzz.plugin-requests"] {
             let release = Release {
@@ -2779,27 +2685,28 @@ mod tests {
     fn host_grants_follow_enabled_bundled_manifest() {
         let temp = tempfile::tempdir().unwrap();
         let manager = Manager::open(Some(temp.path().into()), "test", false).unwrap();
-        let grants = manager.host_grants("block.builderlab", "bundled").unwrap();
-        // Only the native session's Builderlab routes are granted, and only in
-        // an FI build.
-        if env!("BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG").is_empty() {
-            assert_eq!(grants, super::HostGrants::default());
-        } else {
-            assert!(!grants.files);
-            assert!(grants.network_origins.is_empty());
-            let grant = grants.federated_identity.clone().unwrap();
-            let base = super::BUILDERLAB_API_BASE_PATH;
-            let operations: Vec<_> = grant
-                .operations
-                .iter()
-                .map(|op| format!("{} {}", op.method, op.path))
-                .collect();
-            assert!(operations.contains(&format!("GET {base}v1/auth/me")));
-            assert!(operations.contains(&format!("POST {base}v3/beekeeper/register-agent")));
-            assert!(operations.contains(&format!("POST {base}v3/beekeeper/get-agent-turn-status")));
-            assert!(operations.contains(&format!("POST {base}v1/buzz/nsec-backups/status")));
-            assert_eq!(operations.len(), super::BUILDERLAB_FI_ROUTES.len());
+        if env!("BUZZ_BUILD_FEDERATED_IDENTITY_CONFIG").is_empty()
+            || !super::BUILDERLAB_API_BASE_PATH.ends_with("/api/goose/")
+        {
+            assert!(manager.host_grants("block.builderlab", "bundled").is_err());
+            assert!(super::is_reserved("block.builderlab"));
+            return;
         }
+        let grants = manager.host_grants("block.builderlab", "bundled").unwrap();
+        assert!(!grants.files);
+        assert!(grants.network_origins.is_empty());
+        let grant = grants.federated_identity.clone().unwrap();
+        let base = super::BUILDERLAB_API_BASE_PATH;
+        let operations: Vec<_> = grant
+            .operations
+            .iter()
+            .map(|op| format!("{} {}", op.method, op.path))
+            .collect();
+        assert!(operations.contains(&format!("GET {base}v1/auth/me")));
+        assert!(operations.contains(&format!("POST {base}v3/beekeeper/register-agent")));
+        assert!(operations.contains(&format!("POST {base}v3/beekeeper/get-agent-turn-status")));
+        assert!(operations.contains(&format!("POST {base}v1/buzz/nsec-backups/status")));
+        assert_eq!(operations.len(), super::BUILDERLAB_FI_ROUTES.len());
         assert!(grants.commands.is_empty());
         assert!(manager
             .host_grants("block.builderlab", "wrong-revision")

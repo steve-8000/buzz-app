@@ -1,6 +1,7 @@
 // FOUNDATION: Startup, navigation, contributed pages, and built-in Settings.
 import { AgentAvatarArtworkProvider } from "../features/agents/AgentAvatarArtworkProvider";
 import { Welcome } from "../features/identity/Welcome";
+import { IdentitySetup } from "../features/identity/IdentitySetup";
 import { NewMenu } from "./shell/NewMenu";
 import { PrimarySidebar } from "./shell/PrimarySidebar";
 import { ChannelNavigationProvider } from "../features/channel-navigation/ChannelNavigationState";
@@ -84,26 +85,31 @@ export function App({ services }: { services: AppServices }) {
     update();
     return identity.subscribe(update);
   }, [identity]);
+  const application = (
+    <LaunchSignIn identity={services.federatedIdentity}>
+      <ConnectedApp services={services} />
+      {!launching && (
+        <LegacyCommunityImport communities={services.communities} />
+      )}
+    </LaunchSignIn>
+  );
   return (
     <AgentAvatarArtworkProvider>
       <ModalWindowDragProvider
         value={isTauri() ? modalWindowDragHandlers : undefined}
       >
         <LaunchWindowControls />
-        {services.identity ? (
+        {services.identity ? services.firstRunFederatedIdentity ? (
           <Welcome
             identity={services.identity}
             communities={services.communities}
             invites={services.invites}
             federatedIdentity={services.firstRunFederatedIdentity}
           >
-            <LaunchSignIn identity={services.federatedIdentity}>
-              <ConnectedApp services={services} />
-              {!launching && (
-                <LegacyCommunityImport communities={services.communities} />
-              )}
-            </LaunchSignIn>
+            {application}
           </Welcome>
+        ) : (
+          <IdentitySetup identity={services.identity}>{application}</IdentitySetup>
         ) : (
           <ConnectedApp services={services} />
         )}
@@ -352,14 +358,14 @@ function ConnectedAppContent({ services }: { services: AppServices }) {
   // Keep the parser launch surface through local bootstrap, not network refresh.
   if (!settings && restoring)
     return document.getElementById("buzz-launch") ? null : (
-      <div className="buzz-launch" role="status" aria-label="Opening Buzz">
+      <div className="buzz-launch" role="status" aria-label="Opening Gram">
         <LoadingWindowHeader />
         <picture>
           <source
             media="(prefers-reduced-motion: reduce)"
             srcSet="/buzz-mark.svg"
           />
-          <img src="/buzz-loading-mark.svg" alt="Buzz" width="72" height="72" />
+          <img src="/buzz-loading-mark.svg" alt="Gram" width="72" height="72" />
         </picture>
       </div>
     );

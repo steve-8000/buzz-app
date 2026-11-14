@@ -10,16 +10,16 @@ use zeroize::Zeroizing;
 
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) const KEY_SERVICE: &str = if cfg!(debug_assertions) {
-    "xyz.block.buzz.desktop.jev-key.debug"
+    "one.clab.gram.jev-key.debug"
 } else {
-    "xyz.block.buzz.desktop.jev-key"
+    "one.clab.gram.jev-key"
 };
 /// The service before 1.0. Reads copy a key found only there; clearing removes it too.
 #[cfg_attr(test, allow(dead_code))]
 const PREVIOUS_KEY_SERVICE: &str = if cfg!(debug_assertions) {
-    "dev.local.buzz.foundation.jev-key.debug"
+    "one.clab.gram.jev-key-store.debug"
 } else {
-    "dev.local.buzz.foundation.jev-key"
+    "one.clab.gram.jev-key-store"
 };
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) const KEY_ACCOUNT: &str = "typesafe";
@@ -35,9 +35,7 @@ pub(crate) trait KeyStore: Send + Sync {
 
 pub(crate) struct JevHost {
     store: Arc<dyn KeyStore>,
-    /// `None` until read: the Keychain is asked once, then kept current by set
-    /// and clear. A failed read is not kept, and a key the service refuses is
-    /// read again, so one removed outside the app is seen on the next call.
+    /// An unreadable or refused key is read again rather than cached.
     key: Mutex<Option<Option<Zeroizing<String>>>>,
 }
 
@@ -51,17 +49,14 @@ impl JevHost {
             key: Mutex::new(None),
         }
     }
-    /// The saved key, or `None` when there is none. A Keychain that cannot be
-    /// read is an error, not a missing key.
+    /// An unreadable store is an error, not a missing key.
     pub(crate) async fn key(&self) -> Result<Option<Zeroizing<String>>, String> {
         let mut key = self.key.lock().await;
         if key.is_none() {
-            // The store can block on a consent dialog; a caller's deadline
-            // still applies while it waits.
             let store = self.store.clone();
             let read = tokio::task::spawn_blocking(move || store.read())
                 .await
-                .map_err(|_| "The Keychain is unavailable".to_string())??;
+                .map_err(|_| "Credential storage is unavailable".to_string())??;
             *key = Some(read);
         }
         Ok(key.as_ref().and_then(|k| k.clone()))
@@ -86,7 +81,7 @@ impl JevHost {
         let write = saved.clone();
         tokio::task::spawn_blocking(move || store.replace(&write))
             .await
-            .map_err(|_| "The Keychain is unavailable".to_string())??;
+            .map_err(|_| "Credential storage is unavailable".to_string())??;
         *key = Some(Some(saved));
         Ok(())
     }
@@ -95,14 +90,13 @@ impl JevHost {
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || store.clear())
             .await
-            .map_err(|_| "The Keychain is unavailable".to_string())??;
+            .map_err(|_| "Credential storage is unavailable".to_string())??;
         *key = Some(None);
         Ok(())
     }
 }
 
-/// The OS credential store: the login Keychain on macOS, the Secret Service on
-/// Linux and the Credential Manager on Windows.
+/// Platform credential storage.
 struct OsKeyStore;
 
 #[cfg(all(
@@ -135,12 +129,12 @@ mod platform {
     fn error(error: Error) -> String {
         match error {
             Error::Denied if cfg!(target_os = "macos") => {
-                "Keychain access was denied. Allow access and retry"
+                "Local secret storage access was denied. Check its permissions and retry"
             }
             Error::Denied => "Secure storage access was denied. Allow access and retry",
             Error::Busy => "Another Buzz app is using secure storage. Retry shortly",
             Error::Corrupt | Error::Ambiguous => "The saved key is damaged",
-            _ if cfg!(target_os = "macos") => "The Keychain is unavailable",
+            _ if cfg!(target_os = "macos") => "Local secret storage is unavailable",
             _ => "Secure storage is unavailable. Unlock it and retry",
         }
         .into()
