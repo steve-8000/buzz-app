@@ -58,20 +58,6 @@ export function OmpSettings({ agent, save }: AgentViewProps<Config>) {
 
   return (
     <SettingsGroup>
-      <Select
-        label="Provider"
-        variant="field"
-        value={draft.provider}
-        groups={[{ label: "Agent runtime", options: [
-          { value: "omp", label: "Oh My Pi" },
-          { value: "claude", label: "Claude Code" },
-          { value: "codex", label: "Codex" },
-          { value: "pi", label: "Pi" },
-          { value: "opencode", label: "OpenCode" },
-          { value: "copilot", label: "Copilot" },
-        ] }]}
-        onValueChange={(value) => set("provider", value as Config["provider"])}
-      />
       <Field
         label="Repository folders"
         description="One per line: folders holding git repositories, or repositories themselves. A conversation works in the repository named like its channel, or named in its first message as repo:<name>. Otherwise it uses the repository below."
@@ -107,7 +93,7 @@ export function OmpSettings({ agent, save }: AgentViewProps<Config>) {
       </Field>
       <Field
         label="Model"
-        description="The provider's model identifier. Empty keeps its configured default."
+        description="provider/model, such as anthropic/claude-sonnet-5-5. Empty keeps omp's own choice."
       >
         <Input
           value={draft.model}

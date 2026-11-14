@@ -31,7 +31,7 @@ export function tarExecutable(
   if (platform !== "win32") return "tar";
   if (!systemRoot || !win32.isAbsolute(systemRoot))
     throw new Error(
-      "Windows executable staging requires an absolute SystemRoot for System32\\tar.exe",
+      "Windows Goose staging requires an absolute SystemRoot for System32\\tar.exe",
     );
   // Git Bash can put GNU tar first on PATH; it cannot read our Windows ZIP.
   return win32.join(systemRoot, "System32", "tar.exe");

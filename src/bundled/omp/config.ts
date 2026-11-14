@@ -1,8 +1,7 @@
-// Configuration is captured when Gram creates a workstream.
+// An omp agent's saved settings, and the defaults a new one starts with.
 export type Scope = "thread" | "channel";
 
 export type Config = Readonly<{
-  provider: "omp" | "claude" | "codex" | "pi" | "opencode" | "copilot";
   /** The git repository the agent works on. Each conversation gets its own
    * worktree of it. Empty: the agent works directly in `workspace`. */
   repo: string;
@@ -14,9 +13,9 @@ export type Config = Readonly<{
    * conversation picks its repository from them: the one named like its
    * channel, or `repo:<name>` in the owner's first message. */
   roots: readonly string[];
-  /** Provider-specific model id; empty keeps its default. */
+  /** `provider/model`; empty keeps omp's own choice. */
   model: string;
-  /** Provider-specific reasoning option; empty keeps its default. */
+  /** omp's thinking level; empty keeps omp's own choice. */
   thinking: string;
   instructions: string;
   scope: Scope;
@@ -27,10 +26,9 @@ export type Config = Readonly<{
 }>;
 
 export const DEFAULT_CONFIG: Config = {
-  provider: "omp",
   repo: "",
   base: "main",
-  workspace: "~/.gram/workspaces",
+  workspace: "~/.buzz/omp",
   roots: [],
   model: "",
   thinking: "",
@@ -79,9 +77,6 @@ export function config(value: unknown): Config {
       : {};
   const thinking = text(saved.thinking, "");
   return {
-    provider: ["omp", "claude", "codex", "pi", "opencode", "copilot"].includes(String(saved.provider))
-      ? saved.provider as Config["provider"]
-      : DEFAULT_CONFIG.provider,
     repo: text(saved.repo, DEFAULT_CONFIG.repo).trim(),
     base: text(saved.base, DEFAULT_CONFIG.base).trim() || DEFAULT_CONFIG.base,
     workspace:

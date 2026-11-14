@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { defineConfig, loadEnv, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
@@ -11,144 +10,6 @@ import {
   relayOrigin,
 } from "./src/features/communities/destination.ts";
 import { parseFirstRunAccountSeed } from "./src/features/identity/first-run-seed.ts";
-
-const paseoRoot = fileURLToPath(
-  new URL("target/gram-paseo-source-d13438ba/source", import.meta.url),
-);
-const paseoApp = resolve(paseoRoot, "packages/app");
-const paseoEntry = fileURLToPath(
-  new URL("runtime/paseo-chat/root.tsx", import.meta.url),
-);
-const paseoRequire = createRequire(resolve(paseoRoot, "package.json"));
-const nativeWeb = fileURLToPath(
-  new URL("runtime/paseo-chat/react-native-web.ts", import.meta.url),
-);
-const navigateAgent = fileURLToPath(
-  new URL("runtime/paseo-chat/navigate-agent.ts", import.meta.url),
-);
-
-export function paseoChat(): PluginOption {
-  return {
-    name: "gram-paseo-chat",
-    enforce: "pre",
-    resolveId(id, importer) {
-      if (id === "virtual:gram-paseo-chat") return paseoEntry;
-      if (id === "virtual:paseo-upstream-navigate")
-        return resolve(paseoApp, "src/utils/navigate-to-agent/index.ts");
-      if (
-        id === "./apply-root-font" &&
-        importer === resolve(paseoApp, "src/appearance/apply.ts")
-      )
-        return fileURLToPath(
-          new URL("runtime/paseo-chat/root-font.ts", import.meta.url),
-        );
-      if (
-        (importer === paseoEntry || importer === nativeWeb) &&
-        !id.startsWith(".") &&
-        !id.startsWith("/")
-      )
-        return this.resolve(id, resolve(paseoApp, "index.ts"), {
-          skipSelf: true,
-        });
-    },
-    async transform(code, id) {
-      const path = id.split("?")[0] ?? id;
-      if (path.endsWith("/expo-modules-core/src/ts-declarations/global.ts"))
-        return code.replace(/^import \{/gm, "import type {");
-      if (path.endsWith("/lib/module/web/wasm/md4c.js")) {
-        const trailer = code.lastIndexOf("\nif (typeof exports === 'object'");
-        if (trailer < 0)
-          throw new Error("Markdown WASM CommonJS trailer was not found");
-        return `${code.slice(0, trailer)}\nexport default createMd4cModule;`;
-      }
-      if (path === resolve(paseoApp, "src/i18n/i18next.ts")) {
-        const esbuild = paseoRequire("esbuild") as {
-          build(
-            options: Record<string, unknown>,
-          ): Promise<{ outputFiles: { text: string }[] }>;
-        };
-        const result = await esbuild.build({
-          entryPoints: [path],
-          bundle: true,
-          format: "esm",
-          platform: "neutral",
-          external: ["i18next", "react-i18next"],
-          write: false,
-        });
-        return result.outputFiles[0]?.text;
-      }
-      if (!path.startsWith(`${paseoApp}/src/`) || !/\.[jt]sx?$/.test(path))
-        return;
-      let source = code;
-      // React Native Web does not export Android's native toast API.
-      if (path === resolve(paseoApp, "src/components/toast-host.tsx")) {
-        const nativeImport =
-          'import { Platform, StyleSheet as NativeStyleSheet, Text, ToastAndroid, View } from "react-native";';
-        const webImport =
-          'import { StyleSheet as NativeStyleSheet, Text, View } from "react-native";';
-        const nativeToast = `      const nativeAndroid = options?.nativeAndroid ?? false;
-
-      if (Platform.OS === "android" && nativeAndroid && nativeMessage) {
-        const duration =
-          durationMs !== null && durationMs <= 2500 ? ToastAndroid.SHORT : ToastAndroid.LONG;
-        ToastAndroid.showWithGravity(nativeMessage, duration, ToastAndroid.TOP);
-        return noopDismiss;
-      }
-
-`;
-        if (!source.includes(nativeImport) || !source.includes(nativeToast))
-          throw new Error("Paseo Android toast branch has changed");
-        source = source
-          .replace(nativeImport, webImport)
-          .replace(nativeToast, "");
-      }
-      const babel = paseoRequire("@babel/core") as {
-        transformSync(
-          source: string,
-          options: Record<string, unknown>,
-        ): { code: string | null } | null;
-      };
-      return (
-        babel.transformSync(source, {
-          filename: path,
-          cwd: paseoApp,
-          configFile: resolve(paseoApp, "babel.config.js"),
-          babelrc: false,
-          caller: {
-            name: "metro",
-            platform: "web",
-            isDev: false,
-            supportsStaticESM: true,
-          },
-        })?.code ?? undefined
-      );
-    },
-  };
-}
-
-export const paseoResolution = {
-  alias: [
-    { find: /^@\/utils\/navigate-to-agent$/, replacement: navigateAgent },
-    { find: /^@\//, replacement: `${resolve(paseoApp, "src")}/` },
-    { find: /^react-native$/, replacement: nativeWeb },
-  ],
-  dedupe: ["react", "react-dom"],
-  extensions: [
-    ".web.mjs",
-    ".web.js",
-    ".web.mts",
-    ".web.ts",
-    ".web.jsx",
-    ".web.tsx",
-    ".mjs",
-    ".js",
-    ".mts",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".json",
-  ],
-};
 
 /** A value native builds also read: process first, then repository-root
  * .env.local, never Vite mode files; undefined when unset. */
@@ -282,7 +143,7 @@ export default defineConfig(async ({ command, mode }) => {
   const firstRunAccount =
     command === "serve" ? (env.BUZZ_DEV_FIRST_RUN_ACCOUNT ?? "") : "";
   parseFirstRunAccountSeed(firstRunAccount);
-  const plugins: PluginOption[] = [paseoChat(), react()];
+  const plugins: PluginOption[] = [react()];
   if (command === "serve")
     plugins.push(
       (await import("./scripts/developer-settings.ts")).developerSettingsPlugin(
@@ -319,11 +180,7 @@ export default defineConfig(async ({ command, mode }) => {
     });
   return {
     plugins,
-    resolve: paseoResolution,
     define: {
-      __DEV__: JSON.stringify(mode !== "production"),
-      global: "globalThis",
-      "process.env.EXPO_OS": JSON.stringify("web"),
       "import.meta.env.VITE_BUZZ_LIVE": JSON.stringify(live ? "1" : "0"),
       "import.meta.env.VITE_BUZZ_NOTIFICATIONS_PAUSED": JSON.stringify(
         command === "serve" && env.BUZZ_DEV_NOTIFICATIONS === "0" ? "1" : "0",

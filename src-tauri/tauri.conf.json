@@ -4,9 +4,9 @@
   "version": "0.7.0",
   "identifier": "one.clab.gram",
   "build": {
-    "beforeDevCommand": "pnpm runtime:stage && pnpm dev:desktop --port 1430",
+    "beforeDevCommand": "pnpm dev:desktop --port 1430",
     "devUrl": "http://localhost:1430",
-    "beforeBuildCommand": "pnpm runtime:stage && node scripts/build-goose-acp.mjs && node scripts/build-agent-command.mjs && node scripts/build-buzz-cli.mjs && pnpm build",
+    "beforeBuildCommand": "node scripts/build-goose-acp.mjs && node scripts/build-agent-command.mjs && node scripts/build-buzz-cli.mjs && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -28,18 +28,17 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; frame-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://api.github.com https://d2z0pbxrxbsiz5.cloudfront.net https://d10hx6rb3fdt3l.cloudfront.net wss: ws://127.0.0.1:* buzz-media: http://buzz-media.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: buzz-media: http://buzz-media.localhost; media-src 'self' blob: https://dwwgwmfqqjotj.cloudfront.net buzz-media: http://buzz-media.localhost http://127.0.0.1:* https://github.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://github-production-user-asset-6210df.s3.amazonaws.com https://objects.githubusercontent.com"
+      "csp": "default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost https://api.github.com https://d2z0pbxrxbsiz5.cloudfront.net https://d10hx6rb3fdt3l.cloudfront.net wss: buzz-media: http://buzz-media.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: buzz-media: http://buzz-media.localhost; media-src 'self' blob: https://dwwgwmfqqjotj.cloudfront.net buzz-media: http://buzz-media.localhost http://127.0.0.1:* https://github.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://github-production-user-asset-6210df.s3.amazonaws.com https://objects.githubusercontent.com"
     }
   },
   "bundle": {
     "active": true,
     "macOS": {
       "entitlements": "entitlements.plist",
-      "minimumSystemVersion": "13.5"
+      "minimumSystemVersion": "12.0"
     },
     "resources": {
-      "resources/bin/": "bin/",
-      "resources/gram-runtime/": "gram-runtime/"
+      "resources/bin/": "bin/"
     },
     "icon": [
       "icons/32x32.png",

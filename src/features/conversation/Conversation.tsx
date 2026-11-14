@@ -3,12 +3,10 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
 } from "react";
@@ -35,7 +33,6 @@ import {
   type ConversationHostServices,
   type ConversationInteractions,
 } from "./ConversationHost";
-import { workstreams } from "../agent-chat/workstreams";
 
 /** Everything a reader or composer needs from its channel, supplied once,
  * including the Solo policy, so no view can open a chat under other rules. */
@@ -291,32 +288,6 @@ export function ConversationTimeline(
     ownSoloConversation: _,
     ...shared
   } = useConversation();
-  const bindings = useSyncExternalStore(workstreams.subscribe, workstreams.snapshot);
-  const context = `${session.scope}\n${shared.channelId}`;
-  const sent = useRef({ context, id: props.revealMessageId });
-  const pending = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (sent.current.context !== context) {
-      sent.current = { context, id: props.revealMessageId };
-      pending.current = undefined;
-      return;
-    }
-    if (sent.current.id !== props.revealMessageId) {
-      sent.current.id = props.revealMessageId;
-      pending.current = props.revealMessageId;
-    }
-    if (props.marksRead === false) {
-      pending.current = undefined;
-      return;
-    }
-    const id = pending.current;
-    if (id && props.onOpenThread && bindings.some((binding) =>
-      workstreams.matches(binding, session.viewer, session.scope, shared.channelId, id),
-    )) {
-      pending.current = undefined;
-      props.onOpenThread(id, id);
-    }
-  }, [bindings, context, props.revealMessageId, props.marksRead, props.onOpenThread, session.viewer, session.scope, shared.channelId]);
   // Solo agents answer at top level: show existing threads, start none.
   return (
     <ChannelTimeline

@@ -1,6 +1,5 @@
 import { configDefaults, defineConfig } from "vitest/config";
 import { fixtureAliases } from "./tests/relay-config.ts";
-import { paseoChat, paseoResolution } from "./vite.config.ts";
 const workerLimit = process.env.BUZZ_TEST_WORKERS;
 const maxWorkers = workerLimit === undefined ? undefined : Number(workerLimit);
 if (
@@ -15,12 +14,7 @@ if (
 process.env.LC_ALL = "C.UTF-8";
 
 export default defineConfig({
-  plugins: [paseoChat()],
-  resolve: paseoResolution,
   define: {
-    __DEV__: "false",
-    global: "globalThis",
-    "process.env.EXPO_OS": JSON.stringify("web"),
     "import.meta.env.VITE_BUZZ_COMMUNITY_ALIASES":
       JSON.stringify(fixtureAliases),
   },
