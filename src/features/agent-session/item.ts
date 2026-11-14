@@ -108,6 +108,8 @@ export type ApprovalItem = Base &
     /** The tool that asks to run. */
     tool: string;
     detail: ToolDetail;
+    /** The option that approves this tool for the rest of the session. */
+    grant?: string | undefined;
     description?: string | undefined;
     /** The message that asks the same question in the conversation. */
     message?: string | undefined;

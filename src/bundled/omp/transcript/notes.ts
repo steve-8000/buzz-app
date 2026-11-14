@@ -15,6 +15,8 @@ export type Approval = Readonly<{
   tool: string;
   detail: ToolDetail;
   description: string;
+  /** The option that approves this tool for the rest of the session. */
+  grant?: string | undefined;
 }>;
 
 const stripped = (line: string | undefined, prefix: string) => {
@@ -23,14 +25,19 @@ const stripped = (line: string | undefined, prefix: string) => {
 };
 
 /** What omp asks to approve, when the question is a tool approval: a select
- * of exactly Approve and Deny whose title names the tool. */
+ * of Approve and Deny whose title names the tool. omp 18.20 may add
+ * "Approve <tool> for this session" between them. */
 export function approvalOf(request: UiRequest): Approval | undefined {
   const { options } = request;
+  const grant = options?.length === 3 ? options[1] : undefined;
   if (
     request.method !== "select" ||
-    options?.length !== 2 ||
+    !options ||
+    options.length < 2 ||
+    options.length > 3 ||
     options[0] !== APPROVE ||
-    options[1] !== DENY
+    options.at(-1) !== DENY ||
+    (grant !== undefined && !grant.startsWith(`${APPROVE} `))
   )
     return undefined;
   const title = request.title;
@@ -86,6 +93,7 @@ export function approvalOf(request: UiRequest): Approval | undefined {
   // Any other tool asks the same way, with its own lines under the header.
   return {
     tool,
+    ...(grant ? { grant } : {}),
     ...(specific ?? {
       detail: {
         type: "plain_text",

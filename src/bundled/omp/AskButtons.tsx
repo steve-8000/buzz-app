@@ -32,7 +32,9 @@ export function AskButtons({
             reply: String(at + 1),
             primary: false,
           })),
-          { label: "Deny", reply: "deny", primary: false },
+          ...(ask.options.includes("Deny")
+            ? []
+            : [{ label: "Deny", reply: "deny", primary: false }]),
         ];
   const answer = (label: string, reply: string) => {
     try {

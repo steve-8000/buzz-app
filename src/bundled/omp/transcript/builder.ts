@@ -153,6 +153,7 @@ export class OmpTranscriptBuilder {
           state: "pending",
           tool: approval.tool,
           detail: approval.detail,
+          grant: approval.grant,
           description: approval.description,
         })
       : this.put<QuestionItem>({

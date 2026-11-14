@@ -484,6 +484,7 @@ function ApprovalRow({
   context: RowContext;
 }) {
   const { controls, channel, root, author } = context;
+  const { grant } = item;
   const pending = item.state === "pending";
   const answerable =
     pending && controls?.canAnswer(channel, root, author, item);
@@ -520,6 +521,17 @@ function ApprovalRow({
           >
             Approve
           </Button>
+          {grant && (
+            <Button
+              size="sm"
+              variant="subtle"
+              onClick={() =>
+                controls.answer(channel, root, author, item, { value: grant })
+              }
+            >
+              {grant}
+            </Button>
+          )}
           <Button
             size="sm"
             variant="subtle"

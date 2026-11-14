@@ -134,8 +134,11 @@ function wordsOf(delivery: Delivery<Config>) {
 function outcomeOf(request: UiRequest, answer: UiAnswer): Outcome {
   if ("cancelled" in answer) return "cancelled";
   if ("confirmed" in answer) return answer.confirmed ? "approved" : "denied";
-  if (!approvalOf(request)) return "answered";
-  return answer.value === APPROVE ? "approved" : "denied";
+  const approval = approvalOf(request);
+  if (!approval) return "answered";
+  return answer.value === APPROVE || answer.value === approval.grant
+    ? "approved"
+    : "denied";
 }
 
 function answerText(answer: UiAnswer) {
